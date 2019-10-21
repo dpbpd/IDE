@@ -1,7 +1,7 @@
 {
 	"project":"Makepad",
-	"open":["/examples/present.js"],
-	"run":["/examples/present.js"],
+	"open":["/examples/circles.js"],
+	"run":["/examples/circles.js"],
 	"name":"",
 	"folder":[
 		{"name":"platform","folder":[
