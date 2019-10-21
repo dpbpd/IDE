@@ -24,7 +24,7 @@ function Token(p){
 var pp = Parser.prototype
 
 // Are we running under Rhino?
-var isRhino = typeof Packages == "object" && Object.prototype.toString.call(Packages) == "[object JavaPackage]"
+var isRhino = false//typeof Packages == "object" && Object.prototype.toString.call(Packages) == "[object JavaPackage]"
 
 // Move to the next token
 
@@ -453,10 +453,6 @@ pp.getTokenFromCode = function(code) {
 
 	case 61: case 33: // '=!'
 		return this.readToken_eq_excl(code)
-
-	case 35:
-	case 64:
-		return this.finishOp(tt.probe, 1)
 
 	case 126: // '~'
 		return this.finishOp(tt.prefix, 1)

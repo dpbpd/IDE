@@ -6,14 +6,20 @@ module.exports=class Dock extends require('base/view'){
 				w:'100%',
 				h:'100%'
 			}),
-			Tabs:require('views/tabs').extend({
-				w:'100%',
-				h:'100%',
+			Tabs:class extends require('views/tabs'){
+				prototype(){
+					this.w = '100%'
+					this.h = '100%'
+				}
 				onTabRip(e){
 					this.owner.onTabRip(this, e)
 				}
-			}),
-			Tab:require('stamps/tab').extend({
+				onTabSelect(e){
+					super.onTabSelect(e)
+					this.owner.onTabSelect(e)
+				}
+			},
+			Tab:require('views/tab').extend({
 
 			}),
 			Drop:require('shaders/bg').extend({
@@ -246,18 +252,19 @@ module.exports=class Dock extends require('base/view'){
 		if(this.drag){
 			this.dropInfo = undefined
 			// draw drop overlays
-			for(var key in this.$views){
-				let tabs = this.$views[key]
+			for(var key in this.$ownedViews){
+				let tabs = this.$ownedViews[key]
 				if(!(tabs instanceof this.Tabs)) continue
 				// check if we are over the dropzone
 				let x = clamp(this.xDrag+this.start.x,0,painter.w)
 				let y = clamp(this.yDrag+this.start.y,0,painter.h)
-				let tx = tabs.$x
-				let ty = tabs.$y
+
+				let tx = tabs.$mainTodo.$ax
+				let ty = tabs.$mainTodo.$ay
 				let tw = tabs.$w
 				let th = tabs.$h
-				let px = tabs.parent.$x
-				let py = tabs.parent.$y
+				let px = tabs.parent.$mainTodo.$ax
+				let py = tabs.parent.$mainTodo.$ay
 				let pw = tabs.parent.$w
 				let ph = tabs.parent.$h
 				let tth = this.tabHeight

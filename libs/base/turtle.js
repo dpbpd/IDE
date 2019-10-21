@@ -5,9 +5,8 @@ var hcache = {}
 
 module.exports = class Turtle extends require('base/class'){
 	
-	constructor(view) {
+	constructor() {
 		super()
-		this.view = view
 		this.wx = this.sx = 0
 		this.wy = this.sy = 0
 		this.x1 = this.y1 = Infinity
@@ -17,15 +16,15 @@ module.exports = class Turtle extends require('base/class'){
 	
 	dump() {
 		return (
-		'sx:' + this.sx + 
-				',sy:' + this.sy + 
-				',width:' + this.width + 
-				',height:' + this.height + 
-				',_x:' + this._x + 
-				',_y:' + this._y + 
-				',wx:' + this.wx + 
-				',wy:' + this.wy
-			)
+			'sx:' + this.sx + 
+			',sy:' + this.sy + 
+			',width:' + this.width + 
+			',height:' + this.height + 
+			',_x:' + this._x + 
+			',_y:' + this._y + 
+			',wx:' + this.wx + 
+			',wy:' + this.wy
+		)
 	}
 	
 	geom() {
@@ -35,6 +34,20 @@ module.exports = class Turtle extends require('base/class'){
 			w:this._w,
 			h:this._h
 		}
+	}
+
+	pushShift(sx, sy){
+		if(!this.$pushShift) this.$pushShift = []
+		this.$pushShift.push(this.sx, this.sy)
+		this.sx = sx, 
+		this.sy = sy
+		this.wx = this.sx
+		this.wy = this.sy		
+	}
+
+	popShift(){
+		this.sy = this.$pushShift.pop()
+		this.sx = this.$pushShift.pop()
 	}
 	
 	begin(outer, walkZero) {
@@ -72,23 +85,23 @@ module.exports = class Turtle extends require('base/class'){
 		
 		this.width = outer.width
 		if(typeof _w === 'string') {
-			this._w = (outer._w = outer.evalw(_w, this.context)) - padding[1] - padding[3]
+			this._w = (outer._w = outer.evalw(_w, this.view)) - padding[1] - padding[3]
 		}
 		else this._w = _w - padding[1] - padding[3]
 		if(typeof _x === 'string') {
-			_x = (outer._x = outer.evalx(_x, this.context))
+			_x = (outer._x = outer.evalx(_x, this.view))
 		}
 		this.width = this._w
 		
 		this.height = outer.height
 		if(typeof _h === 'string') {
-			this._h = (outer._h = outer.evalh(_h, this.context)) - padding[0] - padding[2]
+			this._h = (outer._h = outer.evalh(_h, this.view)) - padding[0] - padding[2]
 		}
 		else {
 			this._h = _h - padding[0] - padding[2]
 		}
 		if(typeof _y === 'string') {
-			_y = (outer._y = outer.evaly(_y, this.context))
+			_y = (outer._y = outer.evaly(_y, this.view))
 		}
 		this.height = this._h
 		this.ix = _x
@@ -105,13 +118,14 @@ module.exports = class Turtle extends require('base/class'){
 		
 		this.x1 = this.y1 = Infinity
 		this.x2 = this.y2 = -Infinity
+		this.$alignMx = this.$alignMy = -Infinity
 		//this.mx1 = this.my1 = 
 		this.mh = 0
 		// begin walking
 		this.sx = this.wx = this.ix + padding[3] + margin[3]
 		this.sy = this.wy = this.iy + padding[0] + margin[0]
 		this.$writeCursor = 
-		this.$writeStart = this.view.$writeList && this.view.$writeList.length || 0
+		this.$writeStart = this.view.todo.$writes && this.view.todo.$writes.length || 0
 		
 		//this.$xAbs = outer.$xAbs
 		//this.$yAbs = outer.$yAbs
@@ -122,13 +136,14 @@ module.exports = class Turtle extends require('base/class'){
 		var ax = this.$alignX, ay = this.$alignY
 		
 		if(ax !== 0 || ay !== 0) {
-			var dx = isNaN(this.width)?0:(this.width - (this.x2 - this.sx)) * ax
-			var dy = isNaN(this.height)?0:(this.height - (this.y2 - this.sy)) * ay
+			var dx = isNaN(this.width)?0:(this.width - (this.$alignMx - this.sx)) * ax
+			var dy = isNaN(this.height)?0:(this.height - (this.$alignMy - this.sy)) * ay
 			
 			//	dx = this.width - (this.x2 - this.sx  -15)
 			if(isNaN(dx) || dx === Infinity) dx = 0
 			if(isNaN(dy) || dy === Infinity) dy = 0
 			if(dx !== 0 || dy !== 0) {
+
 				this.view.$moveWritten(this.$writeCursor, dx, dy)
 				// update inner free delta when right/bottom aligning
 				// so the % width calc works
@@ -143,18 +158,17 @@ module.exports = class Turtle extends require('base/class'){
 		if(!last) {
 			var align = this._align
 			// we should be aligning
-			this.$writeCursor = this.view.$writeList && this.view.$writeList.length - 3 || 0 // oldturtle?oldturtle.$writeStart-4:(this.view.$writeList && this.view.$writeList.length-4 || 0)
+			this.$writeCursor = this.view.todo.$writes.length && this.view.todo.$writes.length - 3 || 0 // oldturtle?oldturtle.$writeStart-4:(this.view.$writeList && this.view.$writeList.length-4 || 0)
 			this.$alignX = align[0],this.$alignY = align[1]
 			// reset walking position
 			this.wx = this.sx
 			this.wy = this.sy
+			this.$alignMx = this.$alignMy = -Infinity
 			this.mh = 0
 		}
 	}
 	
 	walk(oldturtle, isView) {
-		if(this.view.$inPlace) return
-		
 		var align = this._align
 		if(align && align[0] !== undefined) { // we are setting/changing alignment
 			if(this.$alignX !== align[0] || this.$alignY !== align[1]) { // we should doAlign
@@ -164,19 +178,19 @@ module.exports = class Turtle extends require('base/class'){
 		
 		var _w = this._w
 		if(typeof _w === 'string') {
-			this._w = this.evalw(_w, this.context)
+			this._w = this.evalw(_w, this.view)
 		}
 		var _h = this._h
 		if(typeof _h === 'string') {
-			this._h = this.evalh(_h, this.context)
+			this._h = this.evalh(_h, this.view)
 		}
 		var _x = this._x
 		if(typeof _x === 'string') {
-			this._x = this.evalx(_x, this.context)
+			this._x = this.evalx(_x, this.view)
 		}
 		var _y = this._y
 		if(typeof _y === 'string') {
-			this._y = this.evaly(_y, this.context)
+			this._y = this.evaly(_y, this.view)
 		}
 		// process the margin argument type
 		var margin = this._margin
@@ -219,8 +233,10 @@ module.exports = class Turtle extends require('base/class'){
 				}
 				
 				if(this.wy > this.y2) this.y2 = this.wy
+				if(this.wy > this.$alignMy) this.$alignMy = this.wy
 				var nx = this.wx + nh
 				if(nx > this.x2) this.x2 = nx
+				if(nx > this.$alignMx) this.$alignMx = nx
 			}
 			else { // walk horizontally
 				if(this.outer && (this.outer._wrap === 2 || 
@@ -253,14 +269,17 @@ module.exports = class Turtle extends require('base/class'){
 				// compute x bounds
 				// check if it wont wrap
 				if(this.wx > this.x2) this.x2 = this.wx
+				if(this.wx > this.$alignMx) this.$alignMx = this.wx
 				// compute y bounds
 				var ny = this.wy + nh
 				if(ny > this.y2) this.y2 = ny
+				if(ny > this.$alignMy) this.$alignMy = ny
 				
 			}
 		}
 		if(this._x < this.x1) this.x1 = this._x
 		if(this._y < this.y1) this.y1 = this._y
+
 	}
 	
 	displace(dx, dy, dw) {
@@ -330,7 +349,7 @@ module.exports = class Turtle extends require('base/class'){
 	}
 	
 	// evaluators of string x/y/w/h
-	evalx(str, context) {
+	evalx(str, view) {
 		var cache = xcache[str]
 		if(!cache) {
 			var pf = parseFloat(str)
@@ -338,25 +357,25 @@ module.exports = class Turtle extends require('base/class'){
 			var code = 'turtle.sx + ' + str
 				.replace(/\@/g, 'turtle.width - turtle._w -')
 				.replace(/\#/g, '*0.01*(turtle.width - (turtle.wx - turtle.sx) - turtle.$alignDx) - turtle._margin[1] - turtle._margin[3]')
-				.replace(/\%/g, '*0.01*(turtle.width) - turtle._margin[1] - turtle._margin[3]')
+				.replace(/\%/g, '*0.01*(turtle.width) - (Array.isArray(turtle._margin)?(turtle._margin[1] - turtle._margin[3]):turtle._margin*2)')
 			cache = xcache[str] = new Function('turtle', 'return ' + code)
 		}
-		var ret = cache.call(context, this)
+		var ret = cache.call(view, this)
 		return ret
 	}
 	
-	evaly(str, context) {
+	evaly(str, view) {
 		var cache = ycache[str]
 		if(!cache) {
 			var pf = parseFloat(str)
 			if(str == pf) return this.sy + pf
 			var code = 'turtle.sy + ' + str
 				.replace(/\@/g, 'turtle.height - turtle._h -')
-				.replace(/\#/g, '*0.01*(turtle.height - (turtle.wy-turtle.sy) - turtle.$alignDy)- turtle._margin[0] - turtle._margin[2]')
-				.replace(/\%/g, '*0.01*(turtle.height)- turtle._margin[0] - turtle._margin[2]')
+				.replace(/\#/g, '*0.01*(turtle.height - (turtle.wy-turtle.sy) - turtle.$alignDy)- (Array.isArray(turtle._margin)?(turtle._margin[0] - turtle._margin[2]):turtle._margin*2)')
+				.replace(/\%/g, '*0.01*(turtle.height)- (Array.isArray(turtle._margin)?(turtle._margin[0] - turtle._margin[2]):turtle._margin*2)')
 			cache = ycache[str] = new Function('turtle', 'return ' + code)
 		}
-		return cache.call(context, this)
+		return cache.call(view, this)
 	}
 	
 	log(...args) {
@@ -364,31 +383,31 @@ module.exports = class Turtle extends require('base/class'){
 		return args[0]
 	}
 	
-	evalw(str, context) {
+	evalw(str, view) {
 		var cache = wcache[str]
 		if(!cache) {
 			var pf = parseFloat(str)
 			if(str == pf) return pf
 			var code = str
-			.replace(/\#/g, '*0.01*(turtle.width - (turtle.wx - turtle.sx) - turtle.$alignDx) - turtle._margin[1] - turtle._margin[3]')
-			.replace(/\%/g, '*0.01*(turtle.width) - turtle._margin[1] - turtle._margin[3]')
+			.replace(/\#/g, '*0.01*(turtle.width - (turtle.wx - turtle.sx) - turtle.$alignDx) - (Array.isArray(turtle._margin)?(turtle._margin[1] - turtle._margin[3]):turtle._margin*2)')
+			.replace(/\%/g, '*0.01*(turtle.width) - (Array.isArray(turtle._margin)?(turtle._margin[1] - turtle._margin[3]):turtle._margin*2)')
 			//var code = str.replace(/\%/g, '*0.01*(turtle.width ) - turtle.margin[1] - turtle.margin[3]')
 			cache = wcache[str] = new Function('turtle', 'return ' + code)
 		}
-		return cache.call(context, this)
+		return cache.call(view, this)
 	}
 	
-	evalh(str, context) {
+	evalh(str, view) {
 		var cache = hcache[str]
 		if(!cache) {
 			var pf = parseFloat(str)
 			if(str == pf) return pf
 			var code = str
-			.replace(/\#/g, '*0.01*(turtle.height - (turtle.wy-turtle.sy) - turtle.$alignDy)- turtle._margin[0] - turtle._margin[2]')
-			.replace(/\%/g, '*0.01*(turtle.height)- turtle._margin[0] - turtle._margin[2]')
+			.replace(/\#/g, '*0.01*(turtle.height - (turtle.wy-turtle.sy) - turtle.$alignDy)- (Array.isArray(turtle._margin)?(turtle._margin[0] - turtle._margin[2]):turtle._margin*2)')
+			.replace(/\%/g, '*0.01*(turtle.height)- (Array.isArray(turtle._margin)?(turtle._margin[0] - turtle._margin[2]):turtle._margin*2)')
 			cache = hcache[str] = new Function('turtle', 'return ' + code)
 		}
-		var r = cache.call(context, this)
+		var r = cache.call(view, this)
 		return r
 	}
 }

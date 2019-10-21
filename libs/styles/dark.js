@@ -1,3 +1,4 @@
+require('base/log')
 module.exports = class DarkStyle extends require('base/style'){
 	prototype(){
 		this.anims = {
@@ -5,8 +6,8 @@ module.exports = class DarkStyle extends require('base/style'){
 		}
 
 		this.fonts = {
-			mono:require('fonts/ubuntu_monospace_256.font'),
-			icon:require('fonts/fontawesome.font'),
+			//mono:require('fonts/ubuntu_monospace_256.font'),
+			icon:require('fonts/fontawesome_makepad.font'),
 			regular:require('fonts/ubuntu_regular_256.font'),
 			size:11
 		}

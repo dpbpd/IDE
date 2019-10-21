@@ -192,6 +192,7 @@ module.exports = class extends require('/platform/service'){
 				f.pickId = pick.pickId
 				f.todoId = pick.todoId
 				f.workerId = pick.workerId
+				f.paintId = pick.paintId
 				f.xDown = f.x
 				f.yDown = f.y
 				// compute tapcount
@@ -274,6 +275,7 @@ module.exports = class extends require('/platform/service'){
 			f.pickId = oldf.pickId
 			f.todoId = oldf.todoId
 			f.workerId = oldf.workerId
+			f.paintId = oldf.paintId
 			var dx = f.xDown - f.x
 			var dy = f.yDown - f.y
 			var isTap = f.time - oldf.time < this.TAP_TIME && Math.sqrt(dx*dx+dy*dy) < (f.touch?this.TAP_DIST_TOUCH:this.TAP_DIST_MOUSE)
@@ -392,7 +394,7 @@ module.exports = class extends require('/platform/service'){
 
 	onCheckMacForce(e){
 		// lets reuse our mouse
-		var fingers = touchToFinger(touchPollEvent)
+		var fingers = touchToFinger(this.touchPollEvent)
 		for(let i = 0; i < fingers.length; i++){
 			fingers[i].force = e.webkitForce / 3.0
 		}
@@ -416,6 +418,7 @@ module.exports = class extends require('/platform/service'){
 	}
 
 	onTouchMove(e){
+		e.preventDefault()
 		this.onFingerMove(touchToFinger(e))
 		this.worker.onAfterEntry()
 	}

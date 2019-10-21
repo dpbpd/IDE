@@ -6,9 +6,21 @@ module.exports = class extends require('/platform/service'){
 		this.args.locationSearch = this.root.locationSearch
 	}
 
+	user_clearCache(){
+		this.root.cache = {}	
+		// lets check localstorage
+		while (localStorage.length) {
+			localStorage.removeItem(localStorage.key(0))
+		}
+	}
+
 	user_load(msg){
 		// if its already in the root cache, dont load it
-		var cache = this.root.resourceCache[msg.path]
+		var cache = this.root.cache[msg.path]
+		if(!cache && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1'){
+			cache = localStorage.getItem('storage1:'+msg.path)
+		}
+
 		if(cache){
 			this.postMessage({
 				fn:'onLoad',
@@ -17,6 +29,7 @@ module.exports = class extends require('/platform/service'){
 			})
 			return
 		}
+
 		var req = new XMLHttpRequest()
 
 		req.addEventListener("error", function(){
@@ -51,6 +64,15 @@ module.exports = class extends require('/platform/service'){
 	}
 
 	user_save(msg){
+		if(location.hostname !== 'localhost' && location.hostname !== '127.0.0.1'){
+			localStorage.setItem('storage1:'+msg.path, msg.data)
+			this.postMessage({
+				fn:'onSave',
+				path:msg.path,
+				response:'local'
+			})
+			return
+		}
 		var req = new XMLHttpRequest()
 		// compare todo against domains
 		req.addEventListener("error", function(){
@@ -81,4 +103,16 @@ module.exports = class extends require('/platform/service'){
 		req.open("POST", location.origin+msg.path, true)
 		req.send(msg.data)
 	}
+
+	user_saveAs(msg){
+		var link  = window.document.createElementNS("http://www.w3.org/1999/xhtml", "a")
+		var blob = new Blob([msg.data], {type:msg.encoding})
+		var url = URL.createObjectURL(blob)
+		link.href = url
+		link.download = msg.name
+		var event = new MouseEvent("click")
+		link.dispatchEvent(event)
+		URL.revokeObjectURL(url)
+	}
+
 }
