@@ -1,24 +1,26 @@
 var parser = require('parsers/js') 
 var storage = require('services/storage') 
-
+var types = require('base/types')
 module.exports = class Code extends require('views/edit'){ 
 
 	// mixin the formatter
 	prototype() {
-		this.mixin(require('parsers/jsastformat'))
+		this.mixin(require('parsers/astfastformat'))
 		this.mixin(require('parsers/jstokenformat'))
-		
-		this.allowOperatorSpaces = 0
-		this.overflow = 'scroll'
-		this.padding = [0, 0, 0, 4]
-		this.$fastTextFontSize = 12
-		this.$fastTextIndent = 0
-		this._onText |= 32
-		this.serializeIndent = '\t'
-		this.props = {
-			errors:undefined
+		this.lazyUniforms = {
+			groupHighlightId: true,
+			blockHighlightPickId: true
 		}
-		
+
+		this.props = {
+			errors:undefined,
+			allowOperatorSpaces:0,
+			overflow:'scroll',
+			padding:[0, 0, 0, 4],
+			$fastTextFontSize:12,
+			$fastTextIndent:0,
+			serializeIndent:'\t'
+		}
 		var colors = module.style.colors
 
 		this.tools = {
@@ -30,8 +32,15 @@ module.exports = class Code extends require('views/edit'){
 				color:colors.codeBg
 			}),
 			Text: require('shaders/codetext').extend({
-				font: module.style.fonts.mono,
+				font: require('fonts/ubuntu_monospace_256.font'),//module.style.fonts.mono,
 				order:3,
+				groupHighlightId:{kind:'uniform', value:0},
+				vertexStyle:function(){$
+					if(this.group == this.groupHighlightId){
+						this.boldness += 0.5
+						this.color *= 1.5
+					}
+				}
 			}),
 			Block: require('shaders/codeblock').extend({
 				pickAlpha: 0.,
@@ -57,33 +66,28 @@ module.exports = class Code extends require('views/edit'){
 					this.borderColor = this.color
 				} 
 			}), 
-			Marker: require('shaders/codemarker').extend({
-				vertexStyle: function() {$
-					this.opColor = this.bgColor * 1.1
-					this.borderColor = this.bgColor
-					this.x -= 2.
-					this.x2 += 2.
-					this.x3 += 2.
-					this.w += 4.
-					this.y += this.level * 1.
-					this.h -= this.level * 2.
-					this.borderRadius -= this.level
-				}
+			Marker: require('shaders/bg').extend({
+				borderRadius:4,
 			}), 			
 			ErrorMarker: require('shaders/codemarker').extend({
-				order:4,
-				vertexStyle: function() {$
-					//this.errorTime = max(0., .1 - this.errorTime) 
-					//if(this.errorAnim.z < this.errorAnim.w) this.errorTime = 1. 
-					this.x2 -= 2. 
-					this.x3 += 2. 
-					this.opColor = this.bgColor * 2.3 
-					this.borderColor = this.bgColor * 1.4 
-				} 
+				order:4
 			}),
-			ErrorMessage: require('base/stamp').extend({
+			ErrorMessage: require('base/view').extend({
+				heavy:false,
 				order:8,
 				margin:[6,0,0,0],
+				states:{
+					default:{
+						to:{Text:{opacity:1.},Bg:{opacity:1}},
+						duration:0.
+					},
+					create:{
+						0:{Text:{opacity:0.},Bg:{opacity:0}},
+						99:{Text:{opacity:0.},Bg:{opacity:0}},
+						to:{Text:{opacity:1.},Bg:{opacity:1}},
+						duration:0.5
+					}
+				},
 				props:{
 					errorPos:0,
 					text:'error'
@@ -320,7 +324,17 @@ module.exports = class Code extends require('views/edit'){
 		} 
 
 		this._defaultScope ={ 
+			_:'global',
+			_$:'global',
+			$:'global',
 			console: 'global', 
+			setTimeout:'global',
+			setInterval:'global',
+			setImmediate:'global',
+			clearTimeout:'global',
+			clearInterval:'global',
+			clearImmediate:'global',
+			performance:'global',
 			eval: 'global', 
 			Infinity: 'global', 
 			NaN: 'global', 
@@ -342,6 +356,8 @@ module.exports = class Code extends require('views/edit'){
 			Set: 'global', 
 			WeakMap: 'global', 
 			WeakSet: 'global', 
+			Promise: 'global',
+			Proxy:'global',
 			SIMD: 'global', 
 			JSON: 'global', 
 			Generator: 'global', 
@@ -359,6 +375,8 @@ module.exports = class Code extends require('views/edit'){
 			Array: 'global', 
 			Int8Array: 'global', 
 			Uint8Array: 'global', 
+			MouseEvent:'global',
+			WebSocket:'global',
 			Uint8ClampedArray: 'global', 
 			Int16Array: 'global', 
 			Uint16Array: 'global', 
@@ -372,6 +390,7 @@ module.exports = class Code extends require('views/edit'){
 			exports: 'global', 
 			module: 'global', 
 			E: 'global', 
+			TORAD:'global',
 			LN10: 'global', 
 			LN2: 'global', 
 			LOG10E: 'global', 
@@ -417,8 +436,9 @@ module.exports = class Code extends require('views/edit'){
 	
 	constructor(...args) { 
 		super(...args) 
-
 		//this.oldText = '' 
+		this.runtimeErrors = []
+		this.parseErrors = []
 		this.$textClean = false 
 		this.indentSize = this.Text.prototype.font.fontmap.glyphs[32].advance * 3 
 		this.$fastTextWhitespace = this.styles.whitespace
@@ -429,68 +449,64 @@ module.exports = class Code extends require('views/edit'){
 		try{
 			this.runtimeErrors.length = 0
 			this.parseErrors.length = 0
-			this.ast = parser.parse(this._text, { 
+			this.ast = parser.parse(this.text, { 
 				storeComments: [] 
 			})
 		}
 		catch(e) {
+			console.log(e)
 			this.parseErrors.push(e)
 		} 
 	} 
 	// serialize all selections, lazily
 	cursorChanged(){
 		super.cursorChanged()
-		// lets take the last cursor and figure out the highlight
-		// range
-		var cursor = this.cs.cursors[0]
-		var pos = cursor.start
-		var blocks = this.$blockRanges
-		if(!blocks) return
-		var minsize = Infinity
-		var found
-		for(var i = 0, l = blocks.length; i < l; i++){
-			var block = blocks[i]
-			if(pos >= block.start && pos < block.end){
-				var size = block.end - block.start
-				if(size <= minsize) minsize = size, found = block
-			}
-		}
-		this.blockHighlightPickId = found?found.id:0
-		
-		// scan for paren ranges
-		var parens = this.$parenRanges
-		minsize = Infinity
-		found = undefined
-		for(var i = 0, l = parens.length; i < l; i++){
-			var paren = parens[i]
-			if(pos >= paren.start && pos < paren.end){
-				var size = paren.end - paren.start
-				if(size <= minsize) minsize = size, found = paren
-			}
-		}
-		this.groupHighlightId = found?found.id:0
 		// trigger some kind of signal for our editor to redraw
 		var visualEditor = this.app.find('VisualEdit')
 		if(visualEditor){
 			visualEditor.onCursorMove(this)
 		}
 	}
+	
+	
+
+	drawStackMarker(start, end, color){
+		var rds = this.$readOffsetText(clamp(start, 0, this.lengthText() - 1) ) 			
+		var rde = this.$readOffsetText(clamp(end, 0, this.lengthText() - 1) ) 			
+		if(!rde) return
+		this.drawMarker({
+			x:rds.x,
+			y:rds.y,
+			w:rde.x-rds.x,
+			h:rds.fontSize * rds.lineSpacing,
+			color:color
+		})
+	}
 
 	drawError(error, id){
-		var epos = clamp(error.pos, 0, this.lengthText() - 1) 
+		var epos = clamp(error.pos, 0, this.lengthText() - 1)
 		
-		var rd = this.$readOffsetText(epos) 			
+		var rd = this.$readOffsetText(epos)
 		if(!rd) return
+		
+		//if(!this.hasErrorMarker) this.hasErrorMarker = {}
 
-		var marker = { 
+		// ok so when do we want to animate
+		// 
+		var marker = {
 			x1: 0, 
 			x2: rd.x, 
 			x3: rd.x + abs(rd.w), 
 			x4: 100000, 
 			y: rd.y, 
 			h: rd.fontSize * rd.lineSpacing, 
-			closed: 0 
+			id:id
+			//state: ((this.hasErrorMarker[id]||0) < this._frameId-2)?'fadein' :'default'
 		}
+
+		//console.log(marker.state, (this.hasErrorMarker[id]||0), this._frameId)
+		//this.hasErrorMarker[id] = this._frameId
+
 		this.drawErrorMarker(marker)
 		// if cursor is at same epos (or mouse hovers over dot?..)
 		// draw ErrorMessage
@@ -514,23 +530,25 @@ module.exports = class Code extends require('views/edit'){
 	}
 
 	onDraw() { 
-		if(!this._text)this._text = ''
+		
+		if(!this.text)this.text = ''
 		this.beginBg() 
 		// ok lets parse the code
 		if(this.$textClean) { 
 			this.reuseDrawSize()
 			this.reuseBlock()
-			this.reuseMarker()
+			//this.reuseMarker()
 			this.reuseText()
 		}
 		else {
 			this.$fastTextDelay = 0 
 			this.parseErrors = []
+			var dontMove = false
 			if(this.$textClean !== null){
 				this.parseText()
-			}		
-			this.pickIdCounter = 1 
-			this.pickIds = [0] 
+			}
+			else dontMove = true
+			this.freePickIds()
 			this.$textClean = true 
 			
 			if(this.ast) {
@@ -539,14 +557,13 @@ module.exports = class Code extends require('views/edit'){
 
 				this.jsASTFormat(this.indentSize, this.ast)
 
-				var oldtext = this._text 
-				this._text = this.$fastTextChunks.join('')
+				var oldtext = this.text 
+				this.text = this.$fastTextChunks.join('')
 
 				if(this.onEndFormatAST) this.onEndFormatAST()
-
 				//console.log(JSON.stringify(this.$fastTextChunks))
 				// deal with the autoformatter 
-				var newtext = this._text
+				var newtext = this.text
 				var oldlen = oldtext.length
 				var newlen = newtext.length
 				for(var start = 0; start < oldlen && start < newlen; start++) {
@@ -565,7 +582,7 @@ module.exports = class Code extends require('views/edit'){
 					this.addUndoDelete(start, newend+1, undefined, "format") 
 				}
 				
-				this.cs.scanChange(oldtext, newtext) 
+				if(!dontMove) this.cs.scanChange(oldtext, newtext) 
 				this.cs.clampCursor(0, newlen) 
 				
 				if(this.onParsed) setImmediate(this.onParsed.bind(this))
@@ -573,21 +590,21 @@ module.exports = class Code extends require('views/edit'){
 			else {
 
 				//var ann = this.ann
-				this.reuseBlock(null, 0)
-				this.reuseMarker()
-				this.jsTokenFormat(this._text)
+				//this.reuseBlock()
+				//this.reuseMarker()
+				this.jsTokenFormat(this.text)
 
 			} 
 			//require('base/perf')
 
 			//require.perf()
-			this.$fastTextDelta = 0 
+			this.$fastTextDelta = 0
 		} 
 
 		if(this.runtimeErrors){
 			for(var i = this.runtimeErrors.length - 1; i >= 0; --i){
 				var err = this.runtimeErrors[i]
-				var text = this._text
+				var text = this.text
 				var line = err.line - 1
 				var col = err.column
 				var j = 0, tl = text.length;
@@ -608,7 +625,38 @@ module.exports = class Code extends require('views/edit'){
 			}
 		}
 
-		if(this.hasFocus) { // draw cursors
+
+		if(this.stackMarkers){
+			var stack = this.stackMarkers.__unwrap__
+			for(var i = stack.length-1; i >= 0; i--){
+				var item = stack[i]
+
+				if(this.resource.path !== item.path) continue
+
+				var text = this.text
+				var line = item.line - 1
+				var col = item.column
+				var j = 0, tl = text.length;
+				for(; j < tl; j++){
+					if(text.charCodeAt(j) === 10) line--
+					if(line<=0) break
+				}
+				var start = j+col
+				var end = start+1
+				for(;end<text.length;end++){
+					if(!text.charAt(end).match(/\w/))break
+				}
+				var col = i/(stack.length-1)
+
+				this.drawStackMarker(start, end, [1-col,col,0.,1])
+			}
+		}
+		// draw code markers
+		// we have a bunch of line/row/size markers
+		// lets draw em
+
+
+		if(this.hasFocus()) { // draw cursors
 
 			var cursors = this.cs.cursors 
 			for(var i = 0; i < cursors.length; i++) {
@@ -617,7 +665,6 @@ module.exports = class Code extends require('views/edit'){
 				if(cursor.max < 0) cursor.max = t.x 
 				
 				var boxes = this.$boundRectsText(cursor.lo(), cursor.hi()) 
-
 				for(var j = 0; j < boxes.length; j++) { 
 					var box = boxes[j] 
 					var pbox = boxes[j - 1] 
@@ -641,8 +688,41 @@ module.exports = class Code extends require('views/edit'){
 				}) 
 				//this.showLastCursor()
 			} 
+
+			// lets take the last cursor and figure out the highlight
+			// range
+			var cursor = this.cs.cursors[0]
+			var pos = cursor.start
+			var blocks = this.$blockRanges
+			if(!blocks) return
+			var minsize = Infinity
+			var found
+			for(var i = 0, l = blocks.length; i < l; i++){
+				var block = blocks[i]
+				if(pos >= block.start && pos < block.end){
+					var size = block.end - block.start
+					if(size <= minsize) minsize = size, found = block
+				}
+			}
+			this.blockHighlightPickId = found?found.id:0
+			
+			// scan for paren ranges
+			var parens = this.$parenRanges
+			minsize = Infinity
+			found = undefined
+			for(var i = 0, l = parens.length; i < l; i++){
+				var paren = parens[i]
+				if(pos >= paren.start && pos < paren.end){
+					var size = paren.end - paren.start
+					if(size <= minsize) minsize = size, found = paren
+				}
+			}
+			this.groupHighlightId = found?found.id:0
+			// k so this is a problem.
+			// how do we fix it.
+
+
 		} 
-		
 		this.endBg(true) 
 	} 
 	
@@ -767,10 +847,10 @@ module.exports = class Code extends require('views/edit'){
 		}
 	}
 
-	onFlag32() { 
-		this.$textClean = false 
-		this.redraw() 
-	} 
+	//onFlag32() { 
+	//	this.$textClean = false 
+	//	this.redraw() 
+	//} 
 	
 	indentFindParenErrorPos() {
 		return -1
@@ -809,12 +889,13 @@ module.exports = class Code extends require('views/edit'){
 	} 
 	
 	onKeySingleQuote(k) {
-		if(!k.meta) return true
-		storage.save("/debug.json", JSON.stringify({step: this.ann.step, ann: this.ann}))
+		//if(!k.meta) return true
+		//storage.save("/debug.json", JSON.stringify({step: this.ann.step, ann: this.ann}))
 	}
 	
 	onKeySemiColon(k) {
-		if(!k.meta) return true
+		//if(!k.meta) return true
+		/*
 		storage.load("/debug.json").then(result=>{
 			this.parseError = {}
 			var res = JSON.parse(result)
@@ -824,7 +905,7 @@ module.exports = class Code extends require('views/edit'){
 			this.ast = undefined
 			this.debugShow = true
 			this.redraw()
-		}) 
+		})*/ 
 	} 
 	
 	onFingerDown(f) { 
@@ -868,7 +949,7 @@ module.exports = class Code extends require('views/edit'){
 	
 	currentIndent(offset){
 		var prev = 0
-		var text = this._text
+		var text = this.text
 		for(var i = offset; i >=0; i--){
 			var char = text.charCodeAt(i)
 			if(i !== offset && (char === 10 || char === 13)) break
@@ -890,10 +971,10 @@ module.exports = class Code extends require('views/edit'){
 
 	insertText(offset, text, isUndo) { 
 		
-		var char = this._text.charAt(offset)
+		var char = this.text.charAt(offset)
 		var move = 0
-		var prev = this._text.charAt(offset - 1)
-		var next = this._text.charAt(offset+1)
+		var prev = this.text.charAt(offset - 1)
+		var next = this.text.charAt(offset+1)
 		if(!isUndo) { 
 			if(text === "'" && char === "'") return 0 
 			if(text === '"' && char === '"') return 0 
@@ -928,14 +1009,14 @@ module.exports = class Code extends require('views/edit'){
 			else this.wasNewlineChange = 0
 		}
 
-		if(this.wasNewlineChange && this._text.charAt(offset) !== '\n' && this._text.charAt(offset + 1) !== '\n') { 
+		if(this.wasNewlineChange && this.text.charAt(offset) !== '\n' && this.text.charAt(offset + 1) !== '\n') { 
 			this.wasFirstNewlineChange = 1 
 		}
 		else this.wasFirstNewlineChange = 0 
 		
 		this.$textClean = false 
 		this.inputDirty = true
-		this._text = this._text.slice(0, offset) + text + this._text.slice(offset) 
+		this.text = this.text.slice(0, offset) + text + this.text.slice(offset) 
 
 		this.redraw() 
 		return {
@@ -960,7 +1041,7 @@ module.exports = class Code extends require('views/edit'){
 		this.$textClean = false 
 		var delta = 0 
 		this.wasNewlineChange = 0 
-		var text = this._text 
+		var text = this.text 
 		//console.log("REMOVE", isUndo, start, end)
 		if(!isUndo) {
 			if(end === start + 1) {  // its a single character
@@ -987,7 +1068,7 @@ module.exports = class Code extends require('views/edit'){
 			} 
 		} 
 		
-		this._text = text.slice(0, start) + text.slice(end)
+		this.text = text.slice(0, start) + text.slice(end)
 	
 		this.redraw() 
 		return delta 
@@ -995,7 +1076,7 @@ module.exports = class Code extends require('views/edit'){
 	
 	serializeSlice(start, end, arg) { 
 		if(arg) return arg.slice(start, end) 
-		return this._text.slice(start, end) 
+		return this.text.slice(start, end) 
 	} 
 } 
 

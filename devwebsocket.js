@@ -32,7 +32,7 @@ proto.initClient = function(clientUrl){
 	let url = this.clientUrl = Url.parse(clientUrl)
 
 	let socketHost = url.hostname+':'+client
-	let socketKey = new Buffer('13-'+Date.now()).toString('base64')
+	let socketKey = new Buffer.alloc('13-'+Date.now()).toString('base64')
 	let sha1 = Crypto.creatHash('sha1')
 	sha1.update(socketKey+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11')
 	let expectHeader = sha1.digest('base64')
@@ -97,7 +97,7 @@ proto.initServer = function(request, socket){
 	socket.write(serverAck)
 	this.initialize()
 	
-	let pingFrame = new Buffer(2)
+	let pingFrame = new Buffer.alloc(2)
 	pingFrame[0] = 9|128
 	pingFrame[1] = 0
 
@@ -109,8 +109,8 @@ proto.initServer = function(request, socket){
 
 proto.initialize = function(){
 	this.maxBuffer = 10000000
-	this.headerBuf = new Buffer(14)
-	this.outputBuf = new Buffer(10000000)
+	this.headerBuf = new Buffer.alloc(14)
+	this.outputBuf = new Buffer.alloc(10000000)
 	this.parseState = this.parseOpcode
 	this.bytesExpected = 1
 	this.bytesWritten = 0
@@ -151,20 +151,20 @@ proto.send = function(data, partial, continuation, masking){
 	if(!this.socket) return
 
 	let head
-	let buf = new Buffer(data)
+	let buf = new Buffer.alloc(data)
 	let buflen = buf.length
 
 	if(buflen < 126){
-		head = new Buffer(2)
+		head = new Buffer.alloc(2)
 		head[1] = buflen		
 	}
 	else if(buflen < 65536){
-		head = new Buffer(4)
+		head = new Buffer.alloc(4)
 		head[1] = 126
 		head.writeUInt16BE(buflen, 2)
 	}
 	else{
-		head = new Buffer(10)
+		head = new Buffer.alloc(10)
 		head[1] = 127
 		head[2] = head[3] = head[4] = head[5] = 0
 		head.writeUInt32BE(buflen, 6)
@@ -178,7 +178,7 @@ proto.send = function(data, partial, continuation, masking){
 
 	if(masking){
 		head[1] |= 128
-		let mask = new Buffer(4)
+		let mask = new Buffer.alloc(4)
 		mask[0] = 0x7f
 		mask[1] = 0x7f
 		mask[2] = 0x7f
@@ -286,7 +286,7 @@ proto.parseMask = function(){
 	this.bytesExpected = this.bytesPayload
 
 	if(this.bytesPayload > this.maxBuffer) return this.error("Socket buffer size too large")
-	if(this.bytesPayload > this.outputBuf.length) this.outputBuf = new Buffer(this.bytesPayload)
+	if(this.bytesPayload > this.outputBuf.length) this.outputBuf = new Buffer.alloc(this.bytesPayload)
 	this.parseState = this.parseData		
 	return true
 }
@@ -349,7 +349,7 @@ proto.parseLen1 = function(){
 	return true
 }
 
-let pongFrame = new Buffer(2)
+let pongFrame = new Buffer.alloc(2)
 pongFrame[0] = 10|128
 pongFrame[1] = 0
 

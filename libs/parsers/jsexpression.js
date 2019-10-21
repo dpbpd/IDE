@@ -83,6 +83,9 @@ pp.parseExpression = function(noIn, refDestructuringErrors) {
 		var node = this.startNodeAt(startPos)
 		node.expressions = [expr]
 		while (this.eat(tt.comma)){
+			if(this.type === tt.parenR){
+				this.unexpected()
+			}
 			node.expressions.push(this.parseMaybeAssign(noIn, refDestructuringErrors))
 		}
 
@@ -223,7 +226,7 @@ pp.parseMaybeUnary = function(refDestructuringErrors, sawUnary) {
 	if (this.type.prefix) {
 		var node = this.startNode()
 		var update = this.type === tt.incDec
-		var probe = this.type === tt.probe
+
 		node.operator = this.value
 		node.prefix = true
 		this.next()
@@ -234,7 +237,7 @@ pp.parseMaybeUnary = function(refDestructuringErrors, sawUnary) {
 						 node.argument.type === "Identifier")
 			this.raiseRecoverable(node.start, "Deleting local variable in strict mode")
 		else sawUnary = true
-		expr = this.finishNode(node, update ? "UpdateExpression" : probe?"ProbeExpression" : "UnaryExpression")
+		expr = this.finishNode(node, update ? "UpdateExpression" : "UnaryExpression")
 	} else {
 		expr = this.parseExprSubscripts(refDestructuringErrors)
 		if (this.checkExpressionErrors(refDestructuringErrors)) return expr
@@ -452,6 +455,9 @@ pp.parseParenAndDistinguishExpression = function(canBeArrow) {
 				if(this.storeComments){
 					this.commentEndSplit(expr, above, tt.parenR, tt.comma)
 				}
+				if(this.type === tt.parenR){
+					this.unexpected()
+				}
 			}
 			else if(this.type !== tt.parenR){
 				this.unexpected()
@@ -532,7 +538,7 @@ pp.parseNew = function() {
 	// store newline after new?
 	var meta = this.parseIdent(true)
 	
-	this.commentAround(node, tt._new)
+	if(this.storeComments) this.commentAround(node, tt._new)
 	
 	if (this.options.ecmaVersion >= 6 && this.eat(tt.dot)) {
 		node.meta = meta
@@ -623,7 +629,7 @@ pp.parseObj = function(isPattern, refDestructuringErrors) {
 		if(this.eat(tt.comma) || (inserted = this.insertCommas && this.skippedNewlines)){
 			if(this.storeComments){
 				if(inserted) node.insCommas  = (node.insCommas || 0)+1
-				this.commentEndSplit(prop, above, close, tt.comma)
+				this.commentEndSplit(prop, above, tt.braceR, tt.comma)
 			}
 			if(this.eat(tt.braceR)){
 				node.trail = true

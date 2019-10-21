@@ -68,23 +68,50 @@ module.exports = function painterTodo(proto){
 
 		var lastTodo = this.currentTodo
 		this.currentTodo = todo
+		
+		var repaint = this.processScrollState(todo)
+		
 		// set todoId
 		var nameIds = this.nameIds
 		var todoUbo = this.uboIds[todo.uboId]
 		if(!todoUbo) return false
 		this.floatUbo(todoUbo, nameIds.thisDOTtodoId, todo.todoId)
-		this.vec2fUbo(todoUbo, nameIds.thisDOTviewScroll, todo.xScroll, todo.yScroll)
+		if(todo.scrollMode){
+			// alright so. we need to check. if we are outside the viewrange
+			// use sync
+			if(todo.scrollMode === 2){
+				//check if we are outside the viewrange ifso syncscroll
+				if(todo.xScroll < todo.xVisible || 
+					todo.xScroll > todo.xVisible + todo.wVisible-todo.xView || 
+					todo.yScroll < todo.yVisible || 
+					todo.yScroll > todo.yVisible + todo.hVisible-todo.yView){
+				
+					this.vec2fUbo(todoUbo, nameIds.thisDOTviewScroll, todo.xScrollSync, todo.yScrollSync)
+				}
+				else{
+					this.vec2fUbo(todoUbo, nameIds.thisDOTviewScroll, todo.xScroll, todo.yScroll)
+				}
+			}
+			else this.vec2fUbo(todoUbo, nameIds.thisDOTviewScroll, todo.xScrollSync, todo.yScrollSync)
+		}
+		else{
+			this.vec2fUbo(todoUbo, nameIds.thisDOTviewScroll, todo.xScroll, todo.yScroll)
+		}
 		this.vec4fUbo(todoUbo, nameIds.thisDOTviewSpace, todo.xView, todo.yView, todo.xTotal, todo.yTotal)
+
+		var paintId = this.paintIds.id++
+		this.paintIds[paintId] = todo
+		this.floatUbo(todoUbo, nameIds.thisDOTpaintId, paintId)
 
 		var f32 = todo.f32
 		var i32 = todo.i32
 		var len = todo.length
 		var last = 0
-		var repaint = false
 		var todofn = this.todofn
+		var argc = 0
 		for(let o = 0; o < len; o += argc + 2){
 			var fnid = i32[o]
-			var argc = i32[o + 1]
+			argc = i32[o + 1]
 			var fn = todofn[fnid]
 			if(!fn) console.error('cant find '+fnid+ ' last was ' + last)
 			last = fnid
@@ -92,7 +119,7 @@ module.exports = function painterTodo(proto){
 			if(ret) repaint = true
 		}
 		this.currentTodo = lastTodo
-		if(!this.inPickPass && this.processScrollState(todo))return true
+		
 		if(repaint || todo.animLoop || todo.timeMax >= this.repaintTime)return true
 	}
 
@@ -150,7 +177,8 @@ module.exports = function painterTodo(proto){
 			if(!this.inPickPass){
 				gl.clearColor(f32[o+3],f32[o+4], f32[o+5], f32[o+6])
 			} else {
-				gl.clearColor(this.currentTodo.todoId/255,0,0,this.worker.workerId/255)
+				//gl.clearColor(this.paintIds.id/255.,0,0,1./255.)
+				gl.clearColor((this.paintIds.id-1)/255.,0,0,1./255.)
 			}
 			clr |= gl.COLOR_BUFFER_BIT
 		}
@@ -348,7 +376,6 @@ module.exports = function painterTodo(proto){
 		int:function intUbo(gl, uniVals, uniLocs, name, i32, f32, o){
 			var loc = uniLocs[name]
 			if(!loc)return
-			var o = offsets[name]
 			var v = i32[o]
 			if(uniVals[name] === v) return
 			uniVals[name] = v

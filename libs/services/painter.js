@@ -4,7 +4,6 @@ var IdAlloc = require('base/idalloc')
 
 class Painter extends require('base/class'){
 	prototype(){
-		this.mixin(require('base/events'))
 	}
 }
 
@@ -157,6 +156,11 @@ painter.ALWAYS = 7
 var todoIds = new IdAlloc()
 
 function sortOrdering(a,b){
+	if(a.order === b.order){
+		if(a.index > b.index) return 1
+		if(a.index < b.index) return -1
+		return 0
+	}
 	if(a.order > b.order) return 1
 	if(a.order < b.order) return -1
 	return 0
@@ -170,6 +174,15 @@ painter.Todo = class Todo extends require('base/class'){
 
 	constructor(initalloc){
 		super()
+
+		// var keys = Object.getOwnPropertyNames(Object.getPrototypeOf(this))
+		// for(let key of keys){
+		// 	let fn = this[key]
+		// 	this[key] = function(){
+		// 		console.log(key, arguments)
+		// 		return fn.apply(this, arguments)
+		// 	}
+		// }
 
 		this.initalloc = 256
 
@@ -191,6 +204,9 @@ painter.Todo = class Todo extends require('base/class'){
 		this.f32 = new Float32Array(this.allocated)
 		this.i32 = new Int32Array(this.f32.buffer)
 		this.ordering = []
+
+		this.props = []
+		this.props2 = []
 		this.xScroll = 0
 		this.yScroll = 0
 		this.timeMax = 0
@@ -227,6 +243,9 @@ painter.Todo = class Todo extends require('base/class'){
 		if(this.orderSort){
 			// copy it
 			var ordering = this.ordering
+			
+			if(this.onFinalizeTodoOrder) this.onFinalizeTodoOrder(this)
+
 			var i32 = this.i32
 			var o32 = new Int32Array(i32)
 			var o = this.orderStart
@@ -238,7 +257,10 @@ painter.Todo = class Todo extends require('base/class'){
 				}
 			}
 			buffer = o32.buffer
+
 		}
+
+		this.batched = false
 
 		return [{
 			fn:'updateTodo',
@@ -262,6 +284,17 @@ painter.Todo = class Todo extends require('base/class'){
 			xView:this.xView,
 			yTotal:this.yTotal,
 			yView:this.yView,
+			
+			// feed back xScroll and yScroll for sync
+			xScrollSync:this.xScroll,
+			yScrollSync:this.yScroll,
+			scrollMode:this.scrollMode,
+			// adaptive scrollmode visibility
+			xVisible:this.xVisible,
+			yVisible:this.yVisible,
+			wVisible:this.wVisible,
+			hVisible:this.hVisible,
+			
 			// id's of the scrollbars
 			xScrollId:this.xScrollId,
 			yScrollId:this.yScrollId,
@@ -276,10 +309,19 @@ painter.Todo = class Todo extends require('base/class'){
 		}]
 	}
 
+	scrollSync(){
+		service.batchMessage({
+			fn:'scrollSync',
+			todoId:this.todoId,
+			x:this.xScroll,
+			y:this.yScroll
+		})
+	}
+
 	scrollTo(x, y, scrollToSpeed){
 		if(x !== undefined) this.xScroll = x
 		if(y !== undefined) this.yScroll = y
-
+		//if(this.batched) return
 		service.batchMessage({
 			fn:'scrollTo',
 			todoId:this.todoId,
@@ -317,12 +359,17 @@ painter.Todo = class Todo extends require('base/class'){
 		this.length = 0
 		this.deps = {}
 		this.children = []
+		var props2 = this.props2
+		this.props2 = this.props
+		this.props = props2
+		this.props.length = 0
 		this.ordering.length = 0
 		this.orderStart = -1
 		this.orderSort = false
 		this.last = -1
 		this.w = painter.w
 		this.h = painter.h
+		this.batched = true
 		service.batchMessage(this)
 	}
 
@@ -344,8 +391,9 @@ painter.Todo = class Todo extends require('base/class'){
 		todo.rootId = this.root.todoId
 	}
 
-	beginOrder(order){
+	beginOrder(order, prop){
 		var ordering = this.ordering
+		var props = this.props
 		if(ordering.length){ // make sure there are no holes
 			if(ordering[ordering.length - 1].end !== this.length){
 				ordering.length = 0
@@ -354,7 +402,8 @@ painter.Todo = class Todo extends require('base/class'){
 		}
 		if(order) this.orderSort = true
 		if(this.orderStart<0) this.orderStart = this.length
-		ordering.push({order:order,start:this.length})
+		if(prop) props.push(prop)
+		ordering.push({order:order, index:ordering.length, start:this.length})
 	}
 
 	endOrder(order){
@@ -373,6 +422,8 @@ painter.Todo = class Todo extends require('base/class'){
 	}
 
 	sampler(nameId, texture, sam){
+		if(!texture) return
+
 		var o = (this.last = this.length)
 		if((this.length += 5) > this.allocated) this.resize()
 		var i32 = this.i32
@@ -642,10 +693,15 @@ painter.Mesh = class Mesh extends require('base/class'){
 		this.type = type
 		this.arraytype = type.array
 		this.slots = slots || type.slots
-
+		this.lutStart = {}
+		this.lutEnd = {}
+		this.lutStart2 = {}
+		this.lutEnd2 = {}
 		this.allocated = 0
+		this.allocated2 = 0
 		this.array = undefined
 		this.length = 0
+		this.length2 = 0
 		this.dirty = true
 		if(initalloc){
 			this.allocated = initalloc
@@ -673,6 +729,38 @@ painter.Mesh = class Mesh extends require('base/class'){
 		}
 		this.array = newarray
 		this.dirty = true
+	}
+
+	// double buffering the buffers
+	flip(clear){
+		var array = this.array
+		var allocated = this.allocated
+		var length = this.length
+		var lutStart = this.lutStart
+		var lutEnd = this.lutEnd
+
+		if(clear){
+			this.length = 0
+			this.array = this.array2
+			this.allocated = this.allocated2 //|| 0
+			this.lutStart = {}
+			this.lutEnd = {}
+		}
+		else{
+			this.length = this.length2// || 0
+			this.array = this.array2
+			this.allocated = this.allocated2 //|| 0
+			this.lutStart = this.lutStart2// || {}
+			this.lutEnd = this.lutEnd2// || {}
+		}
+
+		this.array2 = array
+		this.allocated2 = allocated
+		this.length2 = length
+		this.lutStart2 = lutStart
+		this.lutEnd2 = lutEnd
+		this.dirty = true
+		this.updateMesh()
 	}
 
 	push(){
@@ -762,6 +850,11 @@ painter.TRANSFER_DATA = 1<<4
 
 painter.Texture = class Texture extends require('base/class'){
 	
+	prototype(){
+		this.size = [1,1]
+		this.offset = [0,0]
+	}
+
 	toMessage(){
 
 		var transfer = []
@@ -778,7 +871,7 @@ painter.Texture = class Texture extends require('base/class'){
 			}
 			transfer.push(sendbuffer)
 		}
-		return [{
+		var ret = [{
 			fn:'newTexture',
 			format:this.format,
 			type:this.type,
@@ -789,6 +882,7 @@ painter.Texture = class Texture extends require('base/class'){
 			array:sendbuffer,
 			texId:this.texId
 		}, transfer]
+		return ret
 	}
 
 	constructor(options){
@@ -798,7 +892,7 @@ painter.Texture = class Texture extends require('base/class'){
 		this.format = options.format || painter.RGBA
 		this.type = options.type || painter.UNSIGNED_BYTE
 		this.external = options.external
-		this.flags = options.flags 
+		this.flags = options.flags || 0
 		this.w = options.w 
 		this.h = options.h
 		this.array = options.array
@@ -807,20 +901,21 @@ painter.Texture = class Texture extends require('base/class'){
 	}
 
 	update(options){
+		service.batchMessage(this)
+		if(!options) return
 		if(options.format !== undefined) this.format = options.format
 		if(options.type !== undefined) this.type = options.type
 		if(options.flags !== undefined) this.flags = options.flags
 		if(options.w !== undefined) this.w = options.w
 		if(options.h !== undefined) this.h = options.h
 		if(options.array !== undefined) this.array = options.array
-		service.batchMessage(this)
 	}
 
 	destroyTexture(){
 		textureIds.free(this.textureId)
 		service.batchMessage({
 			fn:'destroyTexture',
-			textureId:textureId
+			textureId:this.textureId
 		})
 		this.textureId = undefined
 	}
@@ -990,7 +1085,7 @@ painter.Ubo = class Ubo extends require('base/class'){
 			uboId: this.uboId,
 			order: order
 		})
-
+		this.layout = layoutDef
 		this.size = size
 		this.f32 = new Float32Array(size)
 		this.i32 = new Int32Array(this.f32.buffer)
@@ -1007,14 +1102,26 @@ painter.Ubo = class Ubo extends require('base/class'){
 		this.uboId = undefined
 	}
 
+	ints(name, x){
+		this.int(painter.nameId(name), x)
+	}
+
 	int(nameId, x){
 		if(!this.updating) this.update()
 		this.i32[this.offsets[nameId]] = x
 	}
 
+	floats(name, x){
+		this.float(painter.nameId(name), x)
+	}
+
 	float(nameId, x){
 		if(!this.updating) this.update()
 		this.f32[this.offsets[nameId]] = x
+	}
+
+	vec2s(name, v){
+		this.vec2(painter.nameId(name), v)
 	}
 
 	vec2(nameId, v){
@@ -1025,6 +1132,10 @@ painter.Ubo = class Ubo extends require('base/class'){
 		f32[o+1] = v[1]
 	}
 
+	vec3s(name, v){
+		this.vec3(painter.nameId(name), v)
+	}
+
 	vec3(nameId, v){
 		if(!this.updating) this.update()
 		var o = this.offsets[nameId]
@@ -1032,6 +1143,10 @@ painter.Ubo = class Ubo extends require('base/class'){
 		f32[o  ] = v[0]
 		f32[o+1] = v[1]
 		f32[o+2] = v[2]
+	}
+
+	vec4s(name, v){
+		this.vec4(painter.nameId(name), v)
 	}
 
 	vec4(nameId, v){ // id:6
@@ -1050,6 +1165,10 @@ painter.Ubo = class Ubo extends require('base/class'){
 			f32[o+2] = v[2]
 			f32[o+3] = v[3]
 		}
+	}
+
+	mat4s(name, m){
+		this.mat4(painter.nameId(name), m)
 	}
 
 	mat4(nameId, m){
@@ -1116,7 +1235,7 @@ painter.Framebuffer = class Framebuffer extends require('base/class'){
 		framebufferIds.free(this.fbId)
 		service.batchMessage({
 			fn:'destroyFramebuffer',
-			fbId:fbId
+			fbId:this.fbId
 		})
 		this.fbId = undefined
 	}

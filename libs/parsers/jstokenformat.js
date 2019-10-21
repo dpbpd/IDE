@@ -102,6 +102,22 @@ module.exports = class JSFormatter extends require('base/class'){
 			this.writeText("for", this.styles.For.for)
 		}
 
+		this["do"] = function(tok){
+			this.writeText("do", this.styles.For.do)
+		}
+
+		this["switch"] = function(tok){
+			this.writeText("switch", this.styles.If.switch)
+		}
+
+		this["case"] = function(tok){
+			this.writeText("case", this.styles.If.case)
+		}
+
+		this["default"] = function(tok){
+			this.writeText("default", this.styles.If.default)
+		}
+
 		this["throw"] = function(tok){
 			this.writeText("for", this.styles.Exception.throw)
 		}
@@ -321,7 +337,7 @@ module.exports = class JSFormatter extends require('base/class'){
 			this.writeText("}", style.curly, parenId)
 			let lineh = this.turtle.mh
 			let blockh = this.turtle.wy
-			let pickId = this.pickIdCounter++
+			let pickId = this.allocPickId(tok)//this.pickIdCounter++
 			//this.pickIds[pickId] = node 
 			this.$parenRanges.push({start:blStart, end:blEnd, id:parenId})
 			if(yPos !== this.turtle.wy){
@@ -391,7 +407,7 @@ module.exports = class JSFormatter extends require('base/class'){
 			this.$parenRanges.push({start:blStart, end:blEnd, id:parenId})
 
 			if(style === this.styles.Array && yPos !== this.turtle.wy){
-				let pickId = this.pickIdCounter++
+				let pickId = this.allocPickId(tok)
 				this.$blockRanges.push({start:blStart, end:blEnd, id:pickId})
 				// lets draw a block with this information
 				this.fastBlock(
@@ -422,6 +438,10 @@ module.exports = class JSFormatter extends require('base/class'){
 
 		this["%"] = function(tok){
 			this.writeText('%', this.styles.Operator.default)
+		}
+
+		this["^"] = function(tok){
+			this.writeText('^', this.styles.Operator.default)
 		}
 		
 		this["?"] = function(tok){
@@ -478,11 +498,7 @@ module.exports = class JSFormatter extends require('base/class'){
 		this["<</>>"] = function(tok){
 			this.writeText(tok.value, this.styles.Operator.default)
 		}
-		
-		this["probe"] = function(tok){
-			this.writeText(tok.value, this.styles.Operator.default)
-		}
-		
+				
 		this["prefix"] = function(tok){
 			this.writeText(tok.value, this.styles.Operator.default)
 		}

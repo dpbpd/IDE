@@ -6,10 +6,10 @@ module.exports = class Bg extends require('./quad'){
 	prototype(){
 		
 		this.props = {
-			borderColor: {value:'white'},
-			borderRadius: {value:0},
-			borderWidth: {value:0},
-
+			borderColor: 'white',
+			borderRadius: 0.,
+			borderWidth: 0.,
+			opacity:1.,
 			fieldSampler:{kind:'sampler', sampler:painter.SAMPLER2DLINEAR},
 			mesh:{kind:'geometry', type:types.vec4},
 		}
@@ -29,10 +29,8 @@ module.exports = class Bg extends require('./quad'){
 				this.beginTurtle()
 			},
 			end:function(doBounds){
-				var ot = this.endTurtle(doBounds)
-				this.turtle.walk(ot)
+				this.endTurtle(doBounds)
 				this.WRITEPROPS()
-				return ot
 			}
 		}
 
@@ -140,8 +138,8 @@ module.exports = class Bg extends require('./quad'){
 		
 		this.fill(this.color)
 		if(this.borderWidth < 0.1){
-			return this.result
+			return this.result * this.opacity
 		}
-		return this.stroke(this.borderColor, this.borderWidth)
+		return this.stroke(this.borderColor, this.borderWidth) * this.opacity
 	}
 }

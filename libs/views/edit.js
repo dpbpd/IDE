@@ -8,10 +8,10 @@ module.exports = class Edit extends require('base/view'){
 
 		this.props = {
 			cursorTrim:0.,
-			text:''
+			text:'',
+			cursor:'text'
 		}
 
-		this.cursor = 'text'
 		//
 		//
 		// Shaders
@@ -34,7 +34,7 @@ module.exports = class Edit extends require('base/view'){
 			Selection:require('shaders/selection').extend({
 				bgColor:colors.textSelect,
 				fieldPush:0.8,
-				order:1,
+				order:2,
 				gloopiness:6,
 				borderRadius:3,
 				borderColor:'#458',
@@ -111,7 +111,7 @@ module.exports = class Edit extends require('base/view'){
 		this.drawText({
 			wrapping: 'line',
 			$editMode: true,
-			text: this._text
+			text: this.text
 		})
 
 		if(this.hasFocus){
@@ -182,7 +182,7 @@ module.exports = class Edit extends require('base/view'){
 				return {}
 			}
 			if(offset < 0) return this.cursorRect(0, 1)
-			var last = this.lengthText() - 1//this._text.length - 1
+			var last = this.lengthText() - 1//this.text.length - 1
 			if(last <0){ // first cursor, make it up from initial props
 				var ls = this.Text.prototype.lineSpacing
 				var fs = this.Text.prototype.fontSize
@@ -197,7 +197,7 @@ module.exports = class Edit extends require('base/view'){
 			}
 			var cr = this.cursorRect(last, 1)
 
-			if(this._text.charCodeAt(last) === 10){
+			if(this.text.charCodeAt(last) === 10){
 				cr.y += cr.fontSize * cr.lineSpacing
 				cr.x = 0
 			}
@@ -231,30 +231,34 @@ module.exports = class Edit extends require('base/view'){
 	}
 
 	textLength(){
-		return this._text.length
+		return this.text.length
 	}
 
 	charAt(offset){
-		return this._text.charAt(offset)
+		return this.text.charAt(offset)
+	}
+
+	slice(start, end){
+		return this.text.slice(start, end)
 	}
 
 	charCodeAt(offset){
-		return this._text.charCodeAt(offset)
+		return this.text.charCodeAt(offset)
 	}
 
 	insertText(offset, text){
-		this._text = this._text.slice(0, offset) + text + this._text.slice(offset)
+		this.text = this.text.slice(0, offset) + text + this.text.slice(offset)
 		this.redraw()
 	}
 
 	removeText(start, end){
-		this._text = this._text.slice(0, start) + this._text.slice(end)
+		this.text = this.text.slice(0, start) + this.text.slice(end)
 		this.redraw()
 		return 0
 	}
 
 	serializeSlice(start, end, arg){
-		return this._text.slice(start, end)
+		return this.text.slice(start, end)
 	}
 
 	scanWordLeft(start){
@@ -267,7 +271,7 @@ module.exports = class Edit extends require('base/view'){
 
 	scanWordRight(start){
 		var i = start, type = 2, len = this.textLength()
-		if(this._text.charCodeAt(start) === 10) return start
+		if(this.text.charCodeAt(start) === 10) return start
 		while(i < len && type === 2) type = charType(this.charAt(i++))
 		while(i < len && type === charType(this.charAt(i))) i++
 		return i
@@ -281,7 +285,7 @@ module.exports = class Edit extends require('base/view'){
 	}
 
 	scanLineRight(start){
-		for(var i = start; i < this._text.length; i++){
+		for(var i = start; i < this.text.length; i++){
 			if(this.charCodeAt(i) === 10) break
 		}
 		return i
@@ -299,8 +303,8 @@ module.exports = class Edit extends require('base/view'){
 
 		//console.log(rd.y - this.todo.yScroll, this.todo.yView)
 		this.app.setCharacterAccentMenuPos(
-			this.$xAbs + rd.x + 0.5 * rd.advance - this.todo.xScroll, 
-			this.$yAbs + rd.y - this.todo.yScroll 
+			this.$xAbs + rd.x + 0.5 * rd.advance - this.$mainTodo.xScroll, 
+			this.$yAbs + rd.y - this.$mainTodo.yScroll 
 		)
 	}
 
@@ -316,7 +320,7 @@ module.exports = class Edit extends require('base/view'){
 			var txt = ''
 			for(let i = 0; i < this.cs.cursors.length; i++){
 				var cursor = this.cs.cursors[i]
-				txt += this._text.slice(cursor.lo(), cursor.hi())
+				txt += this.text.slice(cursor.lo(), cursor.hi())
 			}
 
 			this.app.setClipboardText(txt)
@@ -560,7 +564,6 @@ module.exports = class Edit extends require('base/view'){
 		this.$lastKeyPress = undefined
 		if(f.digit!== 1 || f.button !== 1  || this.isScrollBar(f.pickId)) return
 		if(f.touch && f.tapCount < 1) return// && this.cs.cursors[0].hasSelection()) return
-
 		this.setFocus()
 
 		if(f.meta){
@@ -872,40 +875,67 @@ class Cursor extends require('base/class'){
 		this.max = -1
 	}
 
+
 	toggleSlashComment(){
+
 		// toggle a line comment on or off
-		var start = this.end
-		var ct = 0
-		// lets find the end of the line
-		for(var i = this.end, l = this.editor.textLength();i<l;i++){
-			var code = this.editor.charCodeAt(i)
-			if(code === 10){
-				i--
-				break
+		var toggleLine = (pos)=>{
+			// lets find the end of the line
+			for(var last = pos, l = this.editor.textLength();last<l;last++){
+				var code = this.editor.charCodeAt(last)
+				if(code === 10 || code === 13 || last === l - 1){
+					last--
+					break
+				}
 			}
+
+			// scan backwards to tab, newline or start
+			var slashes = 0
+			for(var i = last; i >= 0; i--){
+				var code = this.editor.charCodeAt(i)
+				if(code === 9 || code === 10 || code === 13){
+					break
+				}
+				if(code === 47) slashes++
+				else slashes = 0
+			}
+
+			var delta = 0
+			if(slashes > 1){ // remove //
+				this.editor.addUndoInsert(i+1, i+3)
+				this.editor.removeText(i+1, i+3)
+				delta = -2//min(abs(i-this.end), 2.)
+			}
+			else{ // add //
+				this.editor.insertText(i+1, '//')
+				this.editor.addUndoDelete(i+1, i+3)
+				delta = 2
+			}
+	
+			this.cursorSet.delta += delta
+			// ok if we are going from start to end
+			// or from end to start determines which one gets moved
+			if(this.start>this.end){
+				if(this.end > i && this.end < last){
+					this.end += delta
+				}
+				this.start += delta
+			}
+			else{
+				if(this.start > i && this.start < last){
+					this.start += delta
+				}
+				this.end += delta
+			}
+			return last + delta + 2
 		}
-		for(;i >= 0; i--){
-			var code = this.editor.charCodeAt(i)
-			if(code === 47) ct++
-			else ct = 0
-			if(ct === 2) break
-			if(code === 9 || code === 10 || code === 13) break
-		}
-		var d = 0
-		if(ct === 2){
-			this.editor.addUndoInsert(i, i+2)
-			this.editor.removeText(i, i+2)
-			d = -min(abs(i-this.end), 2.)
-		}
-		else{
-			this.editor.insertText(i+1, '//')
-			this.editor.addUndoDelete(i+1, i+3)
-			d = 2
+		// lets start with toggle line on end
+		var lo = this.lo() + this.cursorSet.delta
+		var hi = this.hi() + this.cursorSet.delta
+		for(var i = lo; i <= hi;){
+			i = toggleLine(i)
 		}
 
-		this.cursorSet.delta += d
-		this.start += d
-		this.end += d
 		this.editor.cursorChanged()
 	}
 }
@@ -917,12 +947,15 @@ class CursorSet extends require('base/class'){
 				this.delta = 0
 				var cursors = this.cursors
 				let dirty = false
+
+
 				for(let i = 0; i < cursors.length; i++){
 					var cursor = cursors[i]
 					let start = cursor.start, end = cursor.end, max = cursor.max
 					cursor.start += this.delta
 					cursor.end += this.delta
 					cursor[key].apply(cursor, arguments)
+					//console.log("DISPATCHING", key, cursor.start)
 					if(start !== cursor.start || end !== cursor.end || max !== cursor.max) dirty = true
 				}
 				if(dirty)this.updateSet()
