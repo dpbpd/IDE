@@ -122,11 +122,13 @@ module.exports = class CodeBlock extends require('base/shader'){
 		if(this.mesh.z > .5){
 			this.p.y += this.h
 		}
+		else{
+			this.pickId = 0.
+		}
 		return pos * this.viewPosition * this.camPosition * this.camProjection
 	}
 
 	pixel(){$
-
 		//return 'red'
 		//return this.color*0.5
 		this.viewport(this.p)

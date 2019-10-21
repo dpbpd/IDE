@@ -1,67 +1,55 @@
 new require('styles/dark')
+var audio = require('services/audio')
 module.exports = class extends require('base/app'){
 
 	prototype(){
 		this.tools = {
-			Button: require('views/button').extend({
+			Button: require('stamps/button').extend({
 			}),
 			Bg:require('shaders/bg').extend({
-			}),
-			Fill:require('shaders/bg').extend({
+
 			})
 		}
 	}
 
 	constructor(){
 		super()
+		
+		this.recFlow = new audio.Flow({ 
+			gain1: { 
+				to: 'output', 
+				gain:1.0, 
+			}, 
+			input1: {
+				to: 'gain1',
+				device: 'Mic1' 
+			},
+			input2: {
+				to: 'gain1',
+				device: 'Mic2' 
+			},
+			input3: {
+				to: 'gain1',
+				device: 'Mic3' 
+			} 
+		}) 
+		this.recFlow.start() 
+		
 	}
 
 	onDraw(){
-		// yeah our scroll area isnt filled. we need to fill it
-		this.beginBg({
-			w:'100%',
-			h:'100%'
-		})
-
-		
 		this.drawBg({
+			debug:1,
 			borderRadius:8,
 			color:'red',
-			align:[1,0],
-			margin:[0,0,0,5],
 			w:100,
 			h:100
 		})
-
+		console.log(this.drawBg.toString())
+		for(var i=0;i<100;i++)
 		this.drawButton({
-			id:'i1',
-			heavy:false,
-			text:'HELLO',
+			id:i,
+			icon:'search'
 		})
-		
-		this.drawButton({
-			id:'i2',
-			heavy:false,
-			text:'HELLO',
-		})
-		//this.turtle._x = 100
-		this.drawFill({
-			debug:1,
-			borderRadius:8,
-			color:'green',
-			w:'100#',
-			h:100
-		})
-		/*
-		for(var i = 0; i < 5;i++){
-			this.drawButton({
-				id:i,
-				heavy:i%2?true:false,
-				text:''+i,
-				icon:'search'
-			})
-		}
-		*/
-		this.endBg()
 	}
 }

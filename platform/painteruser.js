@@ -42,7 +42,7 @@ module.exports = function painterUser(proto){
 		//	this.shaderIds[shaderid] = shader
 		//	return
 		//}
-		var shader = gl.globalShaderCache[cacheid] 
+		shader = gl.globalShaderCache[cacheid] 
 		if(!shader){
 			shader = gl.globalShaderCache[cacheid] = this.compileShader(vertexcode, pixelcode)
 		}
@@ -213,7 +213,6 @@ module.exports = function painterUser(proto){
 	
 	proto.user_destroyTexture = function(msg){
 		// drop it
-		var gl = this.gl
 		var tex = this.textureIds[msg.texId]
 		if(!tex) return console.log("Destroy texture already deleted ")
 		this.textureIds[msg.texId] = undefined
@@ -229,7 +228,6 @@ module.exports = function painterUser(proto){
 	proto.user_newTodo = function(msg){
 		this.todoIds[msg.todoId] = {
 			todoId:msg.todoId,
-			workerId:this.worker.workerId,
 			xScroll:0,
 			yScroll:0,
 			xScrollFlick:0,
@@ -278,10 +276,10 @@ module.exports = function painterUser(proto){
 		todo.yScrollSync = msg.yScrollSync
 		todo.scrollMode = msg.scrollMode
 		todo.xVisible = msg.xVisible
-		todo.yVisible = msg.yVisible
+		todo.yVisible = msg.hVisible
 		todo.wVisible = msg.wVisible
 		todo.hVisible = msg.hVisible
-		todo.scrollToSpeed = msg.scrollToSpeed || .5
+				todo.scrollToSpeed = msg.scrollToSpeed || .5
 		todo.scrollMomentum = msg.scrollMomentum
 		todo.scrollMask = msg.scrollMask
 		todo.scrollMinSize = msg.scrollMinSize
@@ -296,7 +294,6 @@ module.exports = function painterUser(proto){
 
 	proto.user_updateTodoTime = function(msg){
 		var todo = this.todoIds[msg.todoId]
-		if(!todo) return
 		//todo.timeStart = msg.timeStart
 		todo.timeMax = msg.timeMax
 		this.requestRepaint()
@@ -304,23 +301,14 @@ module.exports = function painterUser(proto){
 
 	proto.user_scrollTo = function(msg){
 		var todo = this.todoIds[msg.todoId]
-		if(!todo) return
 		todo.xScrollTo = msg.x
 		todo.yScrollTo = msg.y
 		todo.scrollToSpeed = msg.scrollToSpeed
 		this.requestRepaint()
 	}
 
-	proto.user_scrollSync = function(msg){
-		var todo = this.todoIds[msg.todoId]
-		if(!todo) return
-		todo.xScrollSync = msg.x
-		todo.yScrollSync = msg.y
-	}
-
 	proto.user_scrollSet = function(msg){
 		var todo = this.todoIds[msg.todoId]
-		if(!todo) return
 		todo.xScroll = msg.x
 		todo.yScroll = msg.y
 		this.requestRepaint()
@@ -402,7 +390,7 @@ module.exports = function painterUser(proto){
 	proto.user_destroyUbo = function(msg){
 		//console.log("DESTROY", msg.uboId)
 		var ubo = this.uboIds[msg.uboId]
-		if(!ubo) return console.log("Destroy ubo already deleted "+msg.uboId)
+		if(!ubo) return console.log("Destroy ubo already deleted ")
 		this.uboIds[msg.uboId] = undefined
 	}
 
@@ -493,10 +481,9 @@ module.exports = function painterUser(proto){
 		var last = 0
 		var repaint = false
 		var todofn = this.todofn
-		var argc = 0
 		for(let o = 0; o < len; o += argc + 2){
 			var fnid = i32[o]
-			argc = i32[o + 1]
+			var argc = i32[o + 1]
 			var fn = vaofn[fnid]
 			if(!fn) console.error('cant find vao '+fnid)
 			else fn.call(this, vao, i32, o)
@@ -568,9 +555,9 @@ module.exports = function painterUser(proto){
 		for(let i =0 ; i < args.length; i++){
 			var s = '' + args[i]
 			if(s.length > 1024){
-				var out = ''
+				out = ''
 				var a = s.split('\n')
-				for(var j = 0; j < a.length; j++){
+				for(j = 0; j < a.length; j++){
 					out += a[j] + '\n'
 					if(out.length>512){
 						console.log(out)
@@ -599,7 +586,7 @@ module.exports = function painterUser(proto){
 			return logShaderError(gl.getShaderInfoLog(pixelshader), addLineNumbers(pixelcode))
 		}
 
-		var shader = gl.createProgram()
+		shader = gl.createProgram()
 		gl.attachShader(shader, vertexshader)
 		gl.attachShader(shader, pixelshader)
 		gl.linkProgram(shader)

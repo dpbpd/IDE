@@ -2,6 +2,7 @@ var service = require('$gamepad1')
 
 class Gamepad extends require('base/class'){
 	prototype(){
+		this.mixin(require('base/events'))
 	}
 }
 

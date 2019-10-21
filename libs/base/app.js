@@ -1,4 +1,3 @@
-require('base/log')
 //var painter = require('painter')
 //var fingers = require('fingers')
 var painter = require('services/painter')
@@ -8,62 +7,47 @@ var Store = require('base/store')
 var Worker = require('services/worker')
 var mat4 = require('base/mat4')
 var vec4 = require('base/vec4')
-var View = require('base/view')
-module.exports = class App extends View{
+
+require('base/log')
+
+module.exports = class App extends require('base/view'){
 	
 	// lets define some props
 	prototype(){
-		this.Turtle = require('base/turtle')
-		this.ScrollBar = require('views/scrollbar').extend({
-			order:99
-		})
 		this.name = 'App'
 		this.cursor = 'default'
 		this.x = 0
 		this.y = 0
 		this.w = '100%'
 		this.h = '100%'
-		this.pickId = 1
 	}
 
 	destroy(){
 		super.destroy()
-		this.$painterUbo.destroyUbo()
+		this.painterUbo.destroyUbo()
 	}
 
 	constructor(){
 		super()
+		
 		// create app
-		this.module = module
 		this.store = Store.create()
 
+		// the turtle writelist
+		this.$writeList = []
+
 		var app = this.app = this
+		var viewTodoMap = this.$viewTodoMap = []
 
-		// pick Ids
-		this.$pickAlloc = 2
-		this.$pickFree = []
-		var pickIds = this.$pickIds = {
-			1:this
-		}
+		viewTodoMap[this.todo.todoId] = this
+
+		app.camPosition = mat4.create()
+		app.camProjection = mat4.create()
 		
-		this.$turtleStack = []
-		this.turtle = this.$appTurtle = new this.Turtle(this)
-		this.$turtleStack.push(this.$appTurtle)
-		this.$turtleStack.len = 1
+		var painterUboDef = app.Pass.prototype.$compileInfo.uboDefs.painter
+		app.painterUbo = new painter.Ubo(painterUboDef)
 
-		this.$camPosition = mat4.create()
-		this.$camProjection = mat4.create()
-		
-		var painterUboDef = this.Pass.prototype.$compileInfo.uboDefs.painter
-		this.$painterUbo = new painter.Ubo(painterUboDef)
-
-		this.frameId = 0
-
-		// lets do our first redraw
-		this.app = app
-		// we are the default focus
-		this.$focusView = app
-		// the main app has a todo
+		app._frameId = 0
 
 		function fingerMessage(event, todoId, pickId, msg, isOut){
 			if(msg.xDown !== undefined){
@@ -72,17 +56,27 @@ module.exports = class App extends View{
 			}
 			msg.x -= painter.x
 			msg.y -= painter.y
-
-			var view = pickIds[pickId]
+			var view = viewTodoMap[todoId]
 			if(!view) return				
 
 			if(view[event]) view[event](msg)
-			if(app[event+'Global']) app[event+'Global'](msg)
+
+			// lets find the right cursor
+			var stamp = view.$pickIds[pickId]
+			if(stamp){
+				if(stamp[event]) stamp[event](msg)
+			}
+			if(isOut) return
+			// set the mousecursor
+			if(stamp){
+				if(stamp.state && stamp.state.cursor) return fingers.setCursor(stamp.state.cursor)
+				if(stamp.cursor) return fingers.setCursor(stamp.cursor)
+			}
 			var iter = view
 			while(iter){
-				var state = iter.states && iter.states[iter.state]
-				if(state && state.cursor) return fingers.setCursor(state.cursor)
-				if(iter.cursor) return fingers.setCursor(iter.cursor)
+				if(iter.cursor){
+					return fingers.setCursor(iter.cursor)
+				}
 				iter = iter.parent
 			}
 		}
@@ -92,9 +86,10 @@ module.exports = class App extends View{
 
 		// dispatch mouse events
 		fingers.onFingerDown = function(msg, localId){
+			
 			if(localId){
 				Worker.setFocus(localId)
-				var focusView = app.$focusView
+				var focusView = app.focusView
 				if(focusView) focusView.clearFocus()
 				return
 			}
@@ -170,7 +165,7 @@ module.exports = class App extends View{
 		}
 
 		function keyboardMessage(name, msg){
-			var iter = app.$focusView
+			var iter = app.focusView
 			while(iter){
 				if(iter[name] && iter[name](msg)) break
 				iter = iter.parent
@@ -210,7 +205,7 @@ module.exports = class App extends View{
 		var appBlur
 		keyboard.onAppBlur = function(msg, localId){
 			if(localId) return
-			appBlur = app.$focusView
+			appBlur = app.focusView
 			if(appBlur) appBlur.clearFocus()
 		}
 
@@ -221,20 +216,32 @@ module.exports = class App extends View{
 
 
 		painter.onResize = function(){
-			app.x = 0
-			app.y = 0
-			app.w = painter.w
-			app.h = painter.h
+			app._x = 0
+			app._y = 0
+			app._w = painter.w
+			app._h = painter.h
 			app.redraw()
 		}
-		
+
+		// lets do our first redraw
+		app.app = app
+		// we are the default focus
+		app.focusView = app
+		// lets attach our todo and ubo to the main framebuffer
+		painter.mainFramebuffer.assignTodoAndUbo(app.todo, app.painterUbo)
+
+		this.appTurtle = new this.Turtle(this)
+
+		// compose the tree
+		//app.$composeTree(app)
+		// first draw
 		painter.onResize()
-		_="Application "+module.worker.main+" started at "+Date().toString() 
+		//app.$redrawViews()
 	}
 
-	transferFingerMove(digit, pickId){
+	transferFingerMove(digit, todoId, pickId){
 		this.$fingerMove[digit] = {
-			todoId:undefined,
+			todoId:todoId,
 			pickId:pickId
 		}
 	}
@@ -269,56 +276,32 @@ module.exports = class App extends View{
 	}
 
 	$updateTime(){
-		this.time = this.getTime()
-		this.frameId++
-	}
-
-	_redraw(force){
-		if(this.redrawTimer === undefined || force){
-			if(this.redrawTimer === null){ // make sure we dont flood the main thread
-				this.redrawTimer = setTimeout(_=>{
-					this.redrawTimer = null
-					this.$redrawViews()
-					if(this.redrawTimer === null) this.redrawTimer = undefined
-				},16)
-			}
-			else{
-				this.redrawTimer = setImmediate(_=>{
-					this.redrawTimer = null
-					this.$redrawViews()
-					if(this.redrawTimer === null) this.redrawTimer = undefined
-				},0)
-			}
-		}
+		this._time = this.getTime()
+		this._frameId++
 	}
 
 	$redrawViews(){
 		this.$updateTime()
 		// we can submit a todo now
-		mat4.ortho(this.$camProjection, 0, painter.w, 0, painter.h, -100, 100)
+		mat4.ortho(this.camProjection, 0, painter.w, 0, painter.h, -100, 100)
+		var todo = this.todo
 
 		// copy to turtle
-		this.$turtleStack.len = 0
-		//this.$writeList.length = 0
+		//this.$turtleStack.len = 0
+		this.$writeList.length = 0
 
 		// set up our root turtle
-		var turtle = this.$appTurtle
+		var turtle = this.appTurtle
 		turtle._x = 0
 		turtle._y = 0
 		turtle.wy = 0
 		turtle.wx = 0
 		turtle.ix = 0
 		turtle.iy = 0
-		turtle._w = turtle.width = this.w
-		turtle._h = turtle.height = this.h
-
-		this.$painterUbo.mat4(painter.nameId('thisDOTcamPosition'), this.$camPosition)
-		this.$painterUbo.mat4(painter.nameId('thisDOTcamProjection'), this.$camProjection)
+		turtle._w = turtle.width = this._w
+		turtle._h = turtle.height = this._h
 
 		this.draw()
-		View.recomputeTodoMatrices(this.$todos[0], 0, 0)
-		//this.$recomputeMatrix(0,0)
+		this.$recomputeMatrix(0,0)
 	}
 }
-
-

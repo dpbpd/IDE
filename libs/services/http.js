@@ -5,6 +5,7 @@ var promId = 0
 
 class Http extends require('base/class'){
 	prototype(){
+		this.mixin(require('base/events'))
 	}
 
 	get(url){

@@ -52,15 +52,10 @@ var defQLS = {
 }
 
 new require('styles/dark')
-module.exports = class extends require('base/app'){ //top
+module.exports = class extends require('base/drawapp'){ //top
 	prototype() {
 		this.tools = {
-			Bg    :require('shaders/bg'),
-			Button:require('views/button'),
-			Text  :require('shaders/text').extend({
-				font:require('fonts/ubuntu_regular_256.font')
-			}),
-			Slider:require('views/slider.js')
+			Slider:require('stamps/slider.js')
 		}
 	}
 	constructor() {
@@ -118,6 +113,7 @@ module.exports = class extends require('base/app'){ //top
 		this.astQL = this.parserQL.parse(this.form)
 		this.parserQLS = makeParser(defQLS)
 		this.astQLS = this.parserQLS.parse(this.style)
+		
 		this.wrap = false
 	}
 	onDraw() {
@@ -225,7 +221,7 @@ module.exports = class extends require('base/app'){ //top
 					})
 					this.drawText({
 						margin:[5, 0, 0, 5],
-						color :'#fff400ff',
+						color :'yellow',
 						text  :'$' + this.vars[id]
 					})
 					this.lineBreak()
@@ -374,12 +370,10 @@ module.exports = class extends require('base/app'){ //top
 		//processQL.Form(this.astQL.n[0])
 		this.endBg()
 		this.turtle.mh = 0
-		this.turtle._wrap = false
 		//this.lineBreak()
 		var px = this.turtle.wx + 5
 		var dumpAst = (node, d) =>{
 			this.turtle.wx = px + d * 10
-			//_=this.turtle
 			this.drawText({
 				color   :'#a',
 				fontSize:8,

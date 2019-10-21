@@ -14,9 +14,9 @@ module.exports = class DrawApp extends require('base/app'){
 				font:require('fonts/ubuntu_regular_256.font')
 			}),
 			Icon:require('shaders/icon').extend({
-				font:require('fonts/fontawesome_makepad.font')
+				font:require('fonts/fontawesome.font')
 			}),
-			Button:require('views/button')
+			Button:require('stamps/button')
 		}
 	}
 }

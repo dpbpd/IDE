@@ -1,5 +1,5 @@
 
-var root = exports
+
 var loadServices = [
 	"debug1",
 	"fingers1",
@@ -58,8 +58,7 @@ var workerSrc =
 	timerLib.toString() + '\n' + 
 	promiseLib.toString() +'\n' + 
 	createOnMessage.toString() + '\n'+
-	decodeException.toString() + '\n' + 
-	'('+workerBoot.toString() + ')(worker, global);\n' 
+	workerBoot.toString() + ';workerBoot();\n' 
 
 
 root.createMainWorker = root.makeWorkerCreator(workerSrc, false)//root.hardwareConcurrency>=4?false:true)
@@ -77,6 +76,7 @@ root.workerIdsAlloc = 1
 root.startWorker = function(serviceList, platform, parent){
 
 	var worker = parent?root.createSubWorker():root.createMainWorker()
+
 	worker.workerId = root.workerIdsAlloc++
 	worker.serviceList = serviceList
 	worker.platform = platform
@@ -226,7 +226,7 @@ allApps.push(Promise.all(allServices).then(function(){
 //
 //
 
-function workerBoot(worker, global){
+function workerBoot(){
 	var modules = {}
 
 	worker.services = {init:{}, ping:{}}
@@ -237,7 +237,117 @@ function workerBoot(worker, global){
 
 	createOnMessage(worker)
 
-	worker.decodeException = decodeException
+	worker.decodeException = function(e){
+
+		if(e.number !== undefined){ // ms edge
+			//edge: e.message, e.description, e.number, e.stack
+			var lines = e.stack.split(/[\r\n]+/)
+			var stack = []
+			for(var i = 1; i < lines.length; i++){
+				var line = lines[i].match(/\s*at\s*(.*?)\s\((.*?)\:(\d+)\:(\d+)\)/)
+				if(line){
+					stack.push({
+						method:line[1],
+						line:parseInt(line[3]),
+						path:line[2],
+						column:parseInt(line[4])
+					})
+				}
+			}
+			return {
+				message:e.message,
+				line:stack[0].line,
+				column:stack[0].column,
+				stack:stack
+			}
+		}
+		else if(e.fileName !== undefined){ // firefox
+			var lines = e.stack.split(/[\r\n]+/)
+			var stack = []
+			for(var i = 0; i < lines.length; i++){
+				var line = lines[i].match(/(.*?)\@(.*?)\:(\d+)\:(\d+)/)
+				if(line){
+					stack.push({
+						method:line[1],
+						line:parseInt(line[3]),
+						path:line[2],
+						column:parseInt(line[4])
+					})
+				}
+			}
+			//firefox: e.message, e.fileName, e.lineNumber, e.columnNumber
+			return {
+				message:e.message,
+				line:e.lineNumber,
+				path:e.fileName,
+				column:e.columnNumber,
+				stack:stack
+			}
+		}
+		else if(e.line !== undefined){ // safari
+			var lines = e.stack.split(/\n/)
+			var stack = []
+			stack.push({
+				path:'unknown',
+				line:parseInt(e.line),
+				column:parseInt(e.column)
+			})
+			for(var i = 1; i < lines.length; i++){
+				var line = lines[i].match(/(.*?)\@(.*?)\:(\d+)\:(\d+)/)
+				if(line){
+					stack.push({
+						method:line[1],
+						path:line[2] || 'unknown',
+						line:parseInt(line[3]),
+						column:parseInt(line[4])
+					})
+				}
+				else{
+					var method = lines[i]
+					if(method && method !== '[native code]') stack.push({
+						method:lines[i],
+						path:'unknown'
+					})
+				}
+			}
+			return {
+				message:e.message,
+				line:stack[0].line,
+				path:stack[0].path,
+				column:stack[0].column,
+				stack:stack
+			}
+
+		} 
+		else if(e.stack !== undefined){ // probably chrome
+			//chrome: e.message, e.stack (parse it)
+			var lines = e.stack.split(/\n/)
+			var stack = []
+			for(var i = 1; i < lines.length; i++){
+				var line = lines[i].match(/\s*at\s*(.*?)\s\((.*?)\:(\d+)\:(\d+)\)/)
+				if(line){
+					stack.push({
+						method:line[1],
+						line:parseInt(line[3]) - 2,
+						path:line[2],
+						column:parseInt(line[4])
+					})
+				}
+			}
+			return {
+				message:lines[0],
+				line:stack[0].line,
+				path:stack[0].path,
+				column:stack[0].column,
+				stack:stack
+			}
+		}
+		else{ // amazing.
+			return {
+				message:JSON.stringify(e)
+			}
+		}
+	}
 
 	class Module{
 
@@ -305,7 +415,6 @@ function workerBoot(worker, global){
 
 			worker.onError = function(e){
 				console.log('worker exception', e)
-				_=e
 				worker.postMessage({
 					$:'worker1',
 					msg:{
@@ -348,7 +457,6 @@ function workerBoot(worker, global){
 			}
 		}
 
-		worker.main = msg.main
 		// lets boot it up
 		var module = modules[msg.main]
 		module.exports = {}
@@ -364,17 +472,16 @@ function workerBoot(worker, global){
 
 			if(worker.appMain && worker.appMain.destroy){
 				worker.appMain.destroy()
-				worker.appMain = undefined
 			}
 			worker.appMain = new module.exports()
 		}
 	}
 
 	// define math and promise globals
-	timerLib(global, worker)
+	timerLib(global)
 	mathLib(global)
-	promiseLib(global, worker)
-	traceLib(global, worker)
+	promiseLib(global)
+	traceLib(global)
 }
 
 
@@ -441,11 +548,8 @@ function workerRequire(absParent, worker, modules, args){
 		if(typeof module.exports === 'function'){
 			Object.defineProperty(module.exports, '__module__', {value:module})
 		}
-		else if(module.exports instanceof ArrayBuffer){
-			module.exports.module = module
-			if(loader){
-				module.exports = loader(module.exports)
-			}
+		else if(loader && module.exports instanceof ArrayBuffer){
+			module.exports = loader(module.exports)
 		}
 		if(module.exports.onRequire){
 			return module.exports.onRequire(arguments, absParent)
@@ -635,7 +739,7 @@ function traceLib(g){
 //
 //
 
-function timerLib(g, worker){
+function timerLib(g){
 	var _setTimeout = g.setTimeout
 	var _clearTimeout = g.clearTimeout
 	var _setInterval = g.setInterval
@@ -781,118 +885,6 @@ function mathLib(g){
 	//	}
 	//}
 }
-
-function decodeException(e){
-	if(e.number !== undefined){ // ms edge
-		//edge: e.message, e.description, e.number, e.stack
-		var lines = e.stack.split(/[\r\n]+/)
-		var stack = []
-		for(var i = 1; i < lines.length; i++){
-			var line = lines[i].match(/\s*at\s*(.*?)\s\((.*?)\:(\d+)\:(\d+)\)/)
-			if(line){
-				stack.push({
-					method:line[1],
-					line:parseInt(line[3]),
-					path:line[2],
-					column:parseInt(line[4])
-				})
-			}
-		}
-		return {
-			message:e.message,
-			line:stack[0].line,
-			column:stack[0].column,
-			stack:stack
-		}
-	}
-	else if(e.fileName !== undefined){ // firefox
-		var lines = e.stack.split(/[\r\n]+/)
-		var stack = []
-		for(var i = 0; i < lines.length; i++){
-			var line = lines[i].match(/(.*?)\@(.*?)\:(\d+)\:(\d+)/)
-			if(line){
-				stack.push({
-					method:line[1],
-					line:parseInt(line[3]),
-					path:line[2],
-					column:parseInt(line[4])
-				})
-			}
-		}
-		//firefox: e.message, e.fileName, e.lineNumber, e.columnNumber
-		return {
-			message:e.message,
-			line:e.lineNumber,
-			path:e.fileName,
-			column:e.columnNumber,
-			stack:stack
-		}
-	}
-	else if(e.line !== undefined){ // safari
-		var lines = e.stack.split(/\n/)
-		var stack = []
-		stack.push({
-			path:'unknown',
-			line:parseInt(e.line),
-			column:parseInt(e.column)
-		})
-		for(var i = 1; i < lines.length; i++){
-			var line = lines[i].match(/(.*?)\@(.*?)\:(\d+)\:(\d+)/)
-			if(line){
-				stack.push({
-					method:line[1],
-					path:line[2] || 'unknown',
-					line:parseInt(line[3]),
-					column:parseInt(line[4])
-				})
-			}
-			else{
-				var method = lines[i]
-				if(method && method !== '[native code]') stack.push({
-					method:lines[i],
-					path:'unknown'
-				})
-			}
-		}
-		return {
-			message:e.message,
-			line:stack[0].line,
-			path:stack[0].path,
-			column:stack[0].column,
-			stack:stack
-		}
-
-	} 
-	else if(e.stack !== undefined){ // probably chrome
-		//chrome: e.message, e.stack (parse it)
-		var lines = e.stack.split(/\n/)
-		var stack = []
-		for(var i = 1; i < lines.length; i++){
-			var line = lines[i].match(/\s*at\s*(.*?)\s\((.*?)\:(\d+)\:(\d+)\)/)
-			if(line){
-				stack.push({
-					method:line[1],
-					line:parseInt(line[3]) - 2,
-					path:line[2],
-					column:parseInt(line[4])
-				})
-			}
-		}
-		return {
-			message:lines[0],
-			line:stack[0].line,
-			path:stack[0].path,
-			column:stack[0].column,
-			stack:stack
-		}
-	}
-	else{ // amazing.
-		return {
-			message:JSON.stringify(e)
-		}
-	}
-}	
-
 
 //
 //

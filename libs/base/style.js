@@ -1,5 +1,5 @@
-require('base/log')
-var Styles = require('base/styles')
+var Tools = require('base/tools')
+
 module.exports = class Style extends require('base/class'){
 
 	constructor(){
@@ -73,7 +73,7 @@ module.exports = class Style extends require('base/class'){
 		}
 
 		if(this.changed){ // inherit class
-			var final = Styles.protoProcess('', object, null, null, null, new WeakMap())
+			var final = Tools.protoProcess('', object, null, null, null, new WeakMap())
 			m.exports = cls.extend(final)
 		}
 	}

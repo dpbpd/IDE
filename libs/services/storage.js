@@ -39,7 +39,7 @@ exports.onRequire = function(args, absParent){
 				prom = Promise.defer(false)
 				loadPromises[final] = prom
 			}
-			if(final.indexOf('//')!==-1){console.error(absParent, path);debugger;}
+			if(final.indexOf('//')!==-1){console.error("WHAA");debugger;}
 			service.postMessage({
 				fn:'load',
 				binary:binary,
@@ -63,14 +63,6 @@ exports.onRequire = function(args, absParent){
 				data:data
 			})
 			return prom
-		},
-		saveAs:function(name, data, encoding){
-			service.postMessage({
-				fn:'saveAs',
-				name:name,
-				data:data,
-				encoding:encoding
-			})
 		}
 	}
 

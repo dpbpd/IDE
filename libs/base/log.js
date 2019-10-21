@@ -1,4 +1,3 @@
-"use strict"
 // serialization buffers
 var persistIds = new WeakMap()
 var persistId = 1
@@ -106,7 +105,7 @@ function serialize(buf, value){
 	if(typeof value === 'object'){
 		var off = buf.weak.get(value)
 		if(off !== undefined){
-			if(buf.off + 1 >= buf.size) resize(buf, 1)
+			if(buf.off + 1 >= buf.size) resize(prop, 1)
 			buf.u32[buf.off++] = 1 // id ref
 			buf.u32[buf.off++] = off
 			return
@@ -192,7 +191,7 @@ function serialize(buf, value){
 	}
 
 	// nothing?
-	if(buf.off >= buf.size) resize(buf.off)
+	if(buf.off >= size) resize(buf.off)
 	buf.u32[buf.off++] = 0
 	return
 }
@@ -255,22 +254,6 @@ function log(v){
 	}
 }
 
-var _traceBlock = {}
-function trace(id){
-	if(_traceBlock[id]) return
-	_traceBlock[id] = true
-	module.worker.postMessage({
-		$:'worker1',
-		msg:{
-			fn:'onTrace',
-			id:id
-		}
-	})
-}
-
 // lets define _ 
-module.worker.defineGlobal('_', function(){$_
-	return profile}, log)
-module.worker.defineGlobal('_$', function(){$_
-	return null
-}, trace)
+module.worker.defineGlobal('_', function(){return profile}, log)
+

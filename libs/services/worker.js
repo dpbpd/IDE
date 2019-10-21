@@ -25,9 +25,6 @@ function flushPileupQueue(){
 		else if(msg.fn == 'onLog'){
 			localIds[msg.localId].onLog(msg)
 		}
-		else if(msg.fn == 'onTrace'){
-			localIds[msg.localId].onTrace(msg)
-		}
 	}
 	pileupQueue.length = 0
 }

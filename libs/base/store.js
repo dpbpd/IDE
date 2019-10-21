@@ -27,12 +27,6 @@ class ProxyMap{
 	}
 
 	// TODO wrap these
-	has(key){
-		var map = this['__unwrap__']
-		return map.has(key)
-	}
-
-	// TODO wrap these
 	keys(){
 		var map = this['__unwrap__']
 		return map.keys()
@@ -45,15 +39,15 @@ class ProxyMap{
 
 	delete(key){
 		var map = this['__unwrap__']
-		var old = map.get(key)
-		proxyHandlerSet(map, key, undefined, old)
+		var old = map.get(index)
+		proxyHandlerSet(map, index, undefined, old)
 		map.delete(key)
 	}
 
 	clear(){
 		var map = this['__unwrap__']
 		for(let key of map.keys()){
-			proxyHandlerSet(map, key, undefined, map.get(key))
+			proxyHandlerSet(map, key, undefined, map.get(old))
 		}
 		map.clear()
 	}
@@ -317,7 +311,7 @@ function proxyHandlerSet(target, key, newValue, oldValue){
 
 	//var oldValue = target[key]
 	var oldReal = oldValue
-	if(!data.allowNewKeys && !Array.isArray(target) && !(target instanceof Map) && !(key in target) && !baseMeta.isRoot){
+	if(!data.allowNewKeys && !Array.isArray(target) && !(key in target) && !baseMeta.isRoot){
 		throw new Error('Adding new keys to an object is turned off, please specify it fully when adding it to the store')
 	}
 
@@ -519,7 +513,7 @@ class Store extends require('base/class'){
 			}
 			// lets walk up the parent chain whilst matching query
 			let parents = change.$meta.parents
-			for(var j = query.length - 2; j>=0 ;j--){
+			for(j = query.length - 2; j>=0 ;j--){
 				q = query[j]
 				let nextParents = null
 				for(let k = parents.length -1; k>=0; k-=2){

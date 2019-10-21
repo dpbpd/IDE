@@ -4,6 +4,7 @@ var IdAlloc = require('base/idalloc')
 
 class Painter extends require('base/class'){
 	prototype(){
+		this.mixin(require('base/events'))
 	}
 }
 
@@ -156,11 +157,6 @@ painter.ALWAYS = 7
 var todoIds = new IdAlloc()
 
 function sortOrdering(a,b){
-	if(a.order === b.order){
-		if(a.index > b.index) return 1
-		if(a.index < b.index) return -1
-		return 0
-	}
 	if(a.order > b.order) return 1
 	if(a.order < b.order) return -1
 	return 0
@@ -174,15 +170,6 @@ painter.Todo = class Todo extends require('base/class'){
 
 	constructor(initalloc){
 		super()
-
-		// var keys = Object.getOwnPropertyNames(Object.getPrototypeOf(this))
-		// for(let key of keys){
-		// 	let fn = this[key]
-		// 	this[key] = function(){
-		// 		console.log(key, arguments)
-		// 		return fn.apply(this, arguments)
-		// 	}
-		// }
 
 		this.initalloc = 256
 
@@ -204,7 +191,6 @@ painter.Todo = class Todo extends require('base/class'){
 		this.f32 = new Float32Array(this.allocated)
 		this.i32 = new Int32Array(this.f32.buffer)
 		this.ordering = []
-
 		this.props = []
 		this.props2 = []
 		this.xScroll = 0
@@ -260,8 +246,6 @@ painter.Todo = class Todo extends require('base/class'){
 
 		}
 
-		this.batched = false
-
 		return [{
 			fn:'updateTodo',
 			viewId:this.viewId,
@@ -309,19 +293,10 @@ painter.Todo = class Todo extends require('base/class'){
 		}]
 	}
 
-	scrollSync(){
-		service.batchMessage({
-			fn:'scrollSync',
-			todoId:this.todoId,
-			x:this.xScroll,
-			y:this.yScroll
-		})
-	}
-
 	scrollTo(x, y, scrollToSpeed){
 		if(x !== undefined) this.xScroll = x
 		if(y !== undefined) this.yScroll = y
-		//if(this.batched) return
+
 		service.batchMessage({
 			fn:'scrollTo',
 			todoId:this.todoId,
@@ -369,7 +344,6 @@ painter.Todo = class Todo extends require('base/class'){
 		this.last = -1
 		this.w = painter.w
 		this.h = painter.h
-		this.batched = true
 		service.batchMessage(this)
 	}
 
@@ -403,7 +377,7 @@ painter.Todo = class Todo extends require('base/class'){
 		if(order) this.orderSort = true
 		if(this.orderStart<0) this.orderStart = this.length
 		if(prop) props.push(prop)
-		ordering.push({order:order, index:ordering.length, start:this.length})
+		ordering.push({order:order, start:this.length})
 	}
 
 	endOrder(order){
@@ -422,8 +396,6 @@ painter.Todo = class Todo extends require('base/class'){
 	}
 
 	sampler(nameId, texture, sam){
-		if(!texture) return
-
 		var o = (this.last = this.length)
 		if((this.length += 5) > this.allocated) this.resize()
 		var i32 = this.i32
@@ -850,11 +822,6 @@ painter.TRANSFER_DATA = 1<<4
 
 painter.Texture = class Texture extends require('base/class'){
 	
-	prototype(){
-		this.size = [1,1]
-		this.offset = [0,0]
-	}
-
 	toMessage(){
 
 		var transfer = []
@@ -871,7 +838,7 @@ painter.Texture = class Texture extends require('base/class'){
 			}
 			transfer.push(sendbuffer)
 		}
-		var ret = [{
+		return [{
 			fn:'newTexture',
 			format:this.format,
 			type:this.type,
@@ -882,7 +849,6 @@ painter.Texture = class Texture extends require('base/class'){
 			array:sendbuffer,
 			texId:this.texId
 		}, transfer]
-		return ret
 	}
 
 	constructor(options){
@@ -892,7 +858,7 @@ painter.Texture = class Texture extends require('base/class'){
 		this.format = options.format || painter.RGBA
 		this.type = options.type || painter.UNSIGNED_BYTE
 		this.external = options.external
-		this.flags = options.flags || 0
+		this.flags = options.flags 
 		this.w = options.w 
 		this.h = options.h
 		this.array = options.array
@@ -901,21 +867,20 @@ painter.Texture = class Texture extends require('base/class'){
 	}
 
 	update(options){
-		service.batchMessage(this)
-		if(!options) return
 		if(options.format !== undefined) this.format = options.format
 		if(options.type !== undefined) this.type = options.type
 		if(options.flags !== undefined) this.flags = options.flags
 		if(options.w !== undefined) this.w = options.w
 		if(options.h !== undefined) this.h = options.h
 		if(options.array !== undefined) this.array = options.array
+		service.batchMessage(this)
 	}
 
 	destroyTexture(){
 		textureIds.free(this.textureId)
 		service.batchMessage({
 			fn:'destroyTexture',
-			textureId:this.textureId
+			textureId:textureId
 		})
 		this.textureId = undefined
 	}
@@ -1235,7 +1200,7 @@ painter.Framebuffer = class Framebuffer extends require('base/class'){
 		framebufferIds.free(this.fbId)
 		service.batchMessage({
 			fn:'destroyFramebuffer',
-			fbId:this.fbId
+			fbId:fbId
 		})
 		this.fbId = undefined
 	}
