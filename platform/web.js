@@ -178,6 +178,7 @@
 				resolve(req.response)
 			})
 			req.open("GET", location.origin+localFile)
+			console.log(req)
 			req.send()
 		})
 	}
