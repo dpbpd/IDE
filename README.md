@@ -5,4 +5,3 @@ Base library used for makepad DO NOT USE OR RELY ON STABILITY. This library can 
 
 Start: node devserver
 
-open in browser: http://makepad.github.io/makepad.html
